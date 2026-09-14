@@ -25,6 +25,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		repoB  = "github:repository:2"
 	)
 
+	declareSyncCheckRequestSpecs(runtime)
+
 	// seed puts one installation with two repositories behind the port, which
 	// is what every sync row references.
 	seed := func(ctx context.Context, store storage.Store, now time.Time) storage.Account {
@@ -311,6 +313,41 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("identifies the competing sync check plan under concurrent creation", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncPlanContention(ctx, store, target, account.ID, now)
+		})
+		It("preserves a deferred sync check blocker after later work starts", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifyDeferredSyncCheck(ctx, store, target, account.ID, now)
+		})
+		It("retains paged sync check evidence without a plan", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+			verifySyncCheckEvidence(ctx, store, target, now)
+		})
+		It("retains the exact sync check result across retries and successor occurrences", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckResult(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
+		It("fences sync check results by target, attempt and live lease", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckFence(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
+		It("rolls back the sync check result when plan creation conflicts", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckRollback(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
+		It("pages sync history without shifting when newer plans arrive", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncHistoryPages(ctx, store, now, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"))
+		})
 		It("schedules saved configuration atomically and waits for its execution window", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)
@@ -860,7 +897,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 					botConfig := config.Default()
 					botConfig.Formatting.Common.LineEnding = "crlf"
 					_, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
-						BotConfig: botConfig, EffectiveSessionTTL: time.Hour,
+						BotConfig: runtimeBehavior(botConfig), EffectiveSessionTTL: time.Hour,
 						ActorAccountID: account.ID, ChangedAt: now,
 					})
 					Expect(err).NotTo(HaveOccurred())
@@ -1268,6 +1305,96 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("repository state", func() {
+		It("retains the proposal destination in completed execution history", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "proposal-plan", account.ID, "scope", now, []orgsync.Action{{RepositoryID: repoA, Kind: orgsync.KindFiles, Operation: orgsync.OperationCreate, Subject: "config.json"}})
+			lease := approveAndLease(ctx, store, account.ID, "proposal-plan", "scope", now)
+			note := orgsync.ActionOutcome{ActionID: lease.Actions[0].ID, State: orgsync.ActionApplied, ProposalURL: "https://github.com/team/repo/pull/42"}
+			Expect(store.RecordSyncActionOutcome(ctx, note)).To(Succeed())
+			// Recording already completed work without fresh metadata must not erase history.
+			note.ProposalURL = ""
+			Expect(store.RecordSyncActionOutcome(ctx, note)).To(Succeed())
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{PlanID: "proposal-plan", State: orgsync.PlanApplied, Now: now})).To(Succeed())
+			_, actions, err := store.GetSyncPlan(ctx, target, "proposal-plan")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].ProposalURL).To(Equal("https://github.com/team/repo/pull/42"))
+		})
+
+		DescribeTable("retains planned inputs after execution failure",
+			func(input string) {
+				ctx, store, now := runtime()
+				account := seed(ctx, store, now)
+				planFor(ctx, store, "input-plan", account.ID, "scope", now, []orgsync.Action{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Operation: orgsync.OperationCreate,
+					Subject: "bug", InputDigest: input,
+				}})
+				lease := approveAndLease(ctx, store, account.ID, "input-plan", "scope", now)
+				Expect(lease.Actions).To(HaveLen(1))
+				Expect(lease.Actions[0].InputDigest).To(Equal(input))
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, AppliedAt: now,
+					Observation: orgsync.ObservationMatched, ObservedDigest: "newer-input", AppliedDigest: "newer-input",
+				}})).To(Succeed())
+				Expect(store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+					ActionID: lease.Actions[0].ID, State: orgsync.ActionFailed, Error: "could not apply",
+				})).To(Succeed())
+				Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+					PlanID: "input-plan", State: orgsync.PlanFailed, Now: now.Add(time.Minute),
+				})).To(Succeed())
+				state, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindLabels)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state.Observation).To(Equal(orgsync.ObservationFailed))
+				Expect(state.ObservedDigest).To(Equal(input))
+				Expect(state.AppliedDigest).To(BeEmpty())
+				Expect(state.Problem).To(Equal("could not apply"))
+			},
+			Entry("the original input survives", "planned-input"),
+			Entry("legacy inputs stay unknown", ""),
+		)
+
+		DescribeTable("round trips classified sync evidence",
+			func(observation orgsync.Observation) {
+				ctx, store, now := runtime()
+				seed(ctx, store, now)
+				state := orgsync.RepositoryState{
+					RepositoryID: repoA, Kind: orgsync.KindFiles,
+					AppliedDigest: "configuration", ObservedDigest: "checked-input", AppliedAt: now,
+					Observation: observation,
+				}
+				state.ProposalURL = map[orgsync.Observation]string{
+					orgsync.ObservationProposed: "https://github.com/team/repo/pull/42", orgsync.ObservationDeclined: "https://github.com/team/repo/pull/42",
+				}[observation]
+				if observation == orgsync.ObservationDifferent || observation == orgsync.ObservationFailed || observation == orgsync.ObservationBlocked {
+					state.AppliedDigest = ""
+				}
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
+				read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(read).To(Equal(state))
+				listed, err := store.ListSyncRepositoryState(ctx, target)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(listed).To(ConsistOf(state))
+
+				// A later failed observation must remove the old classification.
+				state.Observation, state.AppliedDigest, state.ProposalURL = "", "", ""
+				state.Problem = "could not read repository"
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
+				read, err = store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(read).To(Equal(state))
+			},
+			Entry("historical evidence stays unknown", orgsync.Observation("")),
+			Entry("matching default branch", orgsync.ObservationMatched),
+			Entry("direct changes applied", orgsync.ObservationApplied),
+			Entry("open proposal", orgsync.ObservationProposed),
+			Entry("declined proposal", orgsync.ObservationDeclined),
+			Entry("different contents", orgsync.ObservationDifferent),
+			Entry("failed check", orgsync.ObservationFailed),
+			Entry("blocked check", orgsync.ObservationBlocked),
+		)
+
 		It("keeps why a repository could not be synced", func() {
 			ctx, store, now := runtime()
 			seed(ctx, store, now)

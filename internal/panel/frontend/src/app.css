@@ -52,6 +52,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-padding-bottom: var(--settings-composer-clearance, 0px);
+}
+
 html:focus-within {
   scroll-behavior: smooth;
 }
@@ -208,7 +212,8 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   min-width: 0;
-  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8)) var(--space-8);
+  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8))
+    max(var(--space-8), var(--settings-composer-clearance, 0px));
 }
 
 .workspace-content {
@@ -785,6 +790,28 @@ select:disabled {
    draws menu rows on, and the width band that makes long option labels
    ellipsize instead of stretching the layer to the text. `.menu-search`
    bleeds to the edges with negative margins that assume exactly this pad. */
+/* Shared popup surface for selection and searchable timezone controls. */
+
+.select-menu {
+  background: var(--popover-bg);
+  border: 1px solid var(--popover-border);
+  border-radius: var(--radius-popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-primary);
+  max-block-size: min(20rem, var(--bits-floating-available-height));
+  max-inline-size: var(--bits-floating-available-width);
+  min-inline-size: var(--bits-floating-anchor-width);
+  overflow: auto;
+  z-index: var(--layer-popover);
+}
+.select-menu-in-dialog {
+  z-index: var(--layer-dialog-popover);
+}
+.menu-list.select-options {
+  min-inline-size: 0;
+  max-inline-size: none;
+}
+
 .menu-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1713,7 +1740,8 @@ code {
 
 @media (max-width: 38rem) {
   .workspace {
-    padding: var(--rhythm-pane-top-compact) var(--space-3) var(--space-6);
+    padding: var(--rhythm-pane-top-compact) var(--space-3)
+      max(var(--space-6), var(--settings-composer-clearance, 0px));
   }
 
   .plate-head,

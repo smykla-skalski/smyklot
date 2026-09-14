@@ -76,13 +76,13 @@ describe('themed shared picker [Browser]', () => {
       timelines.push({
         change: 'collapse',
         frames: await sample(() =>
-          page.getByRole('button', { name: 'Collapse pages', exact: true }).click(),
+          page.getByRole('button', { name: 'Collapse navigation', exact: true }).click(),
         ),
       });
       timelines.push({
         change: 'expand',
         frames: await sample(() =>
-          page.getByRole('button', { name: 'Expand pages', exact: true }).click(),
+          page.getByRole('button', { name: 'Expand navigation', exact: true }).click(),
         ),
       });
       await page.setViewportSize({ width: 1024, height: 1000 });
@@ -166,6 +166,8 @@ describe('themed shared picker [Browser]', () => {
   });
 
   it.each([
+    { colorScheme: 'light', width: 1920 },
+    { colorScheme: 'dark', width: 1920 },
     { colorScheme: 'light', width: 1440 },
     { colorScheme: 'dark', width: 1440 },
     { colorScheme: 'light', width: 1024 },
@@ -179,7 +181,7 @@ describe('themed shared picker [Browser]', () => {
     async ({ colorScheme, width }) => {
       const page = await panel.browser.newPage({
         colorScheme,
-        viewport: { width, height: 1100 },
+        viewport: { width, height: width === 1920 ? 1200 : 1100 },
         reducedMotion: 'reduce',
       });
       page.setDefaultTimeout(10_000);
@@ -356,15 +358,15 @@ describe('themed shared picker [Browser]', () => {
             path: join(directory, `bypass-remaining-${colorScheme}-${width}.png`),
             animations: 'disabled',
           });
-        if (width === 1440) {
-          await page.getByRole('button', { name: 'Collapse pages', exact: true }).click();
+        if (width >= 1440) {
+          await page.getByRole('button', { name: 'Collapse navigation', exact: true }).click();
           await checkComposer();
           if (directory)
             await page.screenshot({
               path: join(directory, `bypass-collapsed-${colorScheme}-${width}.png`),
               animations: 'disabled',
             });
-          await page.getByRole('button', { name: 'Expand pages', exact: true }).click();
+          await page.getByRole('button', { name: 'Expand navigation', exact: true }).click();
         }
         await form.getByLabel('App name or slug').fill('smyklot');
         await form.getByText('Looking for actors', { exact: true }).waitFor({ state: 'hidden' });
@@ -451,7 +453,9 @@ describe('themed shared picker [Browser]', () => {
           .locator('.window-row')
           .first()
           .evaluate((node) => {
-            const controls = Array.from(node.querySelectorAll('input,button')).map((control) => {
+            const controls = Array.from(
+              node.querySelectorAll('.form-field input,.form-field button,.window-remove button'),
+            ).map((control) => {
               const bounds = control.getBoundingClientRect();
               return { height: bounds.height, middle: bounds.top + bounds.height / 2 };
             });
@@ -462,6 +466,9 @@ describe('themed shared picker [Browser]', () => {
             });
             return { controls, fields };
           });
+        // The end-of-day checkbox uses the shared checkbox surface on its own row.
+        // Only the weekday, time inputs and remove action share input geometry.
+        expect(windowControls.controls).toHaveLength(4);
         expect(windowControls.controls.every((control) => control.height === 34)).toBe(true);
         expect(windowControls.fields.every((gap) => Math.abs(gap - 8) <= 1)).toBe(true);
         // Day occupies its own row only in the narrow layout; the two time fields

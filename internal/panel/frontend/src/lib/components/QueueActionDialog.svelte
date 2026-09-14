@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { queueActionLabel } from '#lib/queue-words.js';
+  import { timezoneLocalLabel } from '#lib/schedule-timezone.js';
+  import type { LocalTimeResolution } from '#lib/schedule-local-time.js';
+  import { onMount, onDestroy } from 'svelte';
   import { formatDateTime } from '#lib/format.js';
   import type {
     QueueActionInput,
@@ -21,6 +24,7 @@
     error,
     onClose,
     onPreview,
+    onResolveTime,
     onSubmit,
   }: {
     item: QueueItem | null;
@@ -29,11 +33,21 @@
     error: string;
     onClose: () => void;
     onPreview: (input: QueueActionInput) => Promise<QueueSchedulePreview>;
+    onResolveTime: (
+      timezone: string,
+      localTime: string,
+      signal?: AbortSignal,
+    ) => Promise<LocalTimeResolution>;
     onSubmit: (input: QueueActionInput) => void;
   } = $props();
 
   let reason = $state('');
   let at = $state('');
+  let timezone = $state('UTC');
+  let resolution = $state.raw<LocalTimeResolution | null>(null);
+  let instant = $state('');
+  let generation = 0;
+  let controller: AbortController | undefined;
   let outsideWindow = $state(false);
   let priority = $state<QueuePriority>('normal');
   let preview = $state<QueueSchedulePreview | null>(null);
@@ -42,13 +56,17 @@
   let previewKey = $state('');
 
   onMount(() => {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     at = item === null ? '' : localDateTime(item.not_before);
     priority = item?.priority ?? 'normal';
   });
 
+  onDestroy(() => invalidatePreview(true));
+
   const needsReason = $derived(action === 'run_now' || (action === 'schedule_at' && outsideWindow));
   const invalid = $derived(
-    item === null ||
+    previewBusy ||
+      item === null ||
       action === null ||
       (needsReason && reason.trim() === '') ||
       (action === 'schedule_at' && (at === '' || preview === null || previewKey !== scheduleKey())),
@@ -60,23 +78,6 @@
     return new Date(date.getTime() - offset).toISOString().slice(0, 16);
   }
 
-  function titleFor(value: QueueActionType | null): string {
-    switch (value) {
-      case 'run_now':
-        return 'Run now';
-      case 'next_window':
-        return 'Move to next window';
-      case 'schedule_at':
-        return 'Schedule exact time';
-      case 'set_priority':
-        return 'Change priority';
-      case 'cancel':
-        return 'Cancel queued work';
-      default:
-        return 'Queue action';
-    }
-  }
-
   function submit(): void {
     if (item === null || action === null || invalid) return;
     const input: QueueActionInput = {
@@ -85,7 +86,7 @@
     };
     if (reason.trim() !== '') input.reason = reason.trim();
     if (action === 'schedule_at') {
-      input.at = new Date(at).toISOString();
+      input.at = instant;
       input.outside_window = outsideWindow;
     }
     if (action === 'set_priority') input.priority = priority;
@@ -93,28 +94,53 @@
   }
 
   function scheduleKey(): string {
-    return `${at}:${outsideWindow}`;
+    return `${timezone}:${at}:${instant}:${outsideWindow}`;
+  }
+
+  function invalidatePreview(resetTime = false): void {
+    generation++;
+    controller?.abort();
+    previewBusy = false;
+    preview = null;
+    previewKey = '';
+    previewError = '';
+    if (resetTime) {
+      resolution = null;
+      instant = '';
+    }
   }
 
   async function refreshPreview(): Promise<void> {
-    if (item === null || action !== 'schedule_at' || at === '') return;
-    const key = scheduleKey();
+    if (item === null || action !== 'schedule_at' || at === '' || previewBusy) return;
+    const current = ++generation;
+    controller = new AbortController();
     previewBusy = true;
     previewError = '';
     try {
-      preview = await onPreview({
+      if (resolution === null) {
+        const resolved = await onResolveTime(timezone, at, controller.signal);
+        if (current !== generation) return;
+        resolution = resolved;
+        instant = resolved.options.length === 1 ? resolved.options[0]!.at : '';
+      }
+      if (resolution.options.length === 0 || instant === '') return;
+      const key = scheduleKey();
+      const result = await onPreview({
         type: 'schedule_at',
         expected_revision: item.revision,
-        at: new Date(at).toISOString(),
+        at: instant,
         outside_window: outsideWindow,
       });
+      if (current !== generation || key !== scheduleKey()) return;
+      preview = result;
       previewKey = key;
     } catch (cause) {
+      if (current !== generation) return;
       preview = null;
       previewKey = '';
       previewError = cause instanceof Error ? cause.message : String(cause);
     } finally {
-      previewBusy = false;
+      if (current === generation) previewBusy = false;
     }
   }
 
@@ -141,11 +167,13 @@ to ask it four different ways.
 <ConfirmDialog
   id="queue-action"
   open={item !== null && action !== null}
-  title={titleFor(action)}
+  title={action === null ? 'Queue action' : queueActionLabel(action, item)}
   description={item === null ? undefined : item.title}
   {busy}
   busyLabel="Applying…"
-  confirmLabel={action === 'run_now' ? 'Run now' : action === 'cancel' ? 'Cancel work' : 'Apply'}
+  confirmLabel={action === 'run_now' || action === 'cancel'
+    ? queueActionLabel(action, item)
+    : 'Apply'}
   confirmTone={action === 'cancel' ? 'stop' : action === 'run_now' ? 'signal' : 'default'}
   confirmDisabled={invalid}
   {onClose}
@@ -154,10 +182,14 @@ to ask it four different ways.
   <div class="form-stack queue-action-form">
     {#if action === 'run_now'}
       <p>
-        Run this job once now, outside its normal schedule · Work already running is not interrupted
+        Allow this queued occurrence to start now, bypassing its delay and allowed hours. A worker
+        starts it when capacity is available. This does not create another occurrence or interrupt
+        work already running.
       </p>
     {:else if action === 'next_window'}
-      <p>Clear the delay and use the next available time within the job's hours</p>
+      <p>
+        Remove this occurrence's delay and wait for its next allowed window and an available worker.
+      </p>
     {:else if action === 'schedule_at'}
       <div class="form-field">
         <label class="form-label" for="queue-action-time">Not before</label>
@@ -166,8 +198,44 @@ to ask it four different ways.
           disabled={busy}
           id="queue-action-time"
           type="datetime-local"
+          required
+          aria-describedby={resolution?.options.length === 0
+            ? 'queue-action-time-help queue-action-time-error'
+            : 'queue-action-time-help'}
+          aria-invalid={resolution?.options.length === 0}
+          oninput={() => invalidatePreview(true)}
           bind:value={at}
         />
+        <p id="queue-action-time-help" class="form-help">
+          Required. Enter a time in {timezone}, your browser's timezone.
+        </p>
+        {#if resolution?.options.length === 0}
+          <p id="queue-action-time-error" class="form-error" role="alert">
+            This time does not occur in {timezone} because the clocks change. Choose another time.
+          </p>
+        {:else if resolution && resolution.options.length > 1}
+          <p id="queue-action-occurrence-help" class="form-help" role="status">
+            This time occurs more than once because the clocks change. Choose which occurrence you
+            mean.
+          </p>
+          <label class="form-label" for="queue-action-occurrence">Occurrence</label>
+          <Select
+            id="queue-action-occurrence"
+            aria-describedby="queue-action-occurrence-help"
+            required
+            disabled={busy}
+            value={instant || undefined}
+            placeholder="Choose an occurrence"
+            options={resolution.options.map((option) => ({
+              value: option.at,
+              label: timezoneLocalLabel(option),
+            }))}
+            onValueChange={(value) => {
+              invalidatePreview();
+              instant = value ?? '';
+            }}
+          />
+        {/if}
       </div>
       <div class="form-row">
         <span class="form-label">Allow this run outside the job's hours</span>
@@ -179,19 +247,24 @@ to ask it four different ways.
             disabled={busy}
             onToggle={(next) => {
               outsideWindow = next;
-              preview = null;
-              previewKey = '';
+              invalidatePreview();
             }}
           />
         </span>
       </div>
-      <Button row disabled={at === '' || previewBusy} onclick={() => void refreshPreview()}
-        >{previewBusy ? 'Calculating…' : 'Preview when it runs'}</Button
+      <Button
+        row
+        disabled={at === '' || busy}
+        aria-disabled={previewBusy}
+        onclick={() => void refreshPreview()}
+        >{previewBusy ? 'Calculating…' : 'Preview earliest start'}</Button
       >
       {#if preview !== null && previewKey === scheduleKey()}
         <div class="schedule-preview" role="status">
-          <strong>It would first run</strong>
+          <strong>Can start from</strong>
+          <span>Actual start depends on worker availability.</span>
           <time datetime={preview.eligible_at}>{previewTime(preview.eligible_at)}</time>
+          <span>UTC: {previewTime(preview.eligible_at, 'UTC')}</span>
           {#if preview.profile_timezone !== undefined}
             <span
               >{preview.profile_name} ·
@@ -220,19 +293,30 @@ to ask it four different ways.
         />
       </div>
     {:else if action === 'cancel'}
-      <p>The cancellation and who requested it remain in Queue history</p>
+      <p>
+        This cancels the selected occurrence. The cancellation and requester remain in Queue
+        history.
+      </p>
+      {#if item?.source_kind === 'recurring'}
+        <p>The recurring schedule stays enabled. Future occurrences can still be queued.</p>
+      {/if}
     {/if}
 
     {#if needsReason}
       <div class="form-field">
         <label class="form-label" for="queue-action-reason">Reason</label>
         <textarea
+          required
+          aria-describedby="queue-action-reason-help"
           id="queue-action-reason"
           class="text-input"
           disabled={busy}
           rows="3"
           bind:value={reason}
           placeholder="Why is this exception needed?"></textarea>
+        <p id="queue-action-reason-help" class="form-help">
+          Required. Explain why this occurrence should bypass its usual timing.
+        </p>
       </div>
     {/if}
     {#if error !== ''}

@@ -62,11 +62,7 @@ func validateRuntimeSettingsDocumentValue(value storage.RuntimeSettingsDocument)
 	if value.LogLevel != nil && !validRuntimeLogLevel(*value.LogLevel) {
 		return fmt.Errorf("unsupported runtime log level %q", *value.LogLevel)
 	}
-	if value.BotConfig != nil {
-		if _, err := config.ParseRunner(string(value.BotConfig.Runner)); err != nil {
-			return fmt.Errorf("invalid runtime behavior defaults: %w", err)
-		}
-	}
+
 	if err := validateRuntimeRestoreDuration(
 		value.PollInterval,
 		storage.MinRuntimePollInterval,

@@ -22,7 +22,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import { queueLine } from '#lib/queue-words.js';
   import type { PanelApi } from '../api';
-  import { failureAct } from '../failures';
+  import { failureAct, failureClassification } from '../failures';
   import { formatLatency, sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
   import type {
@@ -34,6 +34,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   } from '../types';
   import { cadenceWords, workloadTitle } from '../workloads';
 
+  import QueueInspector from './QueueInspector.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
@@ -43,6 +44,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { queueHeading, queueSubject } from './WorkspaceOverview.svelte';
 
   const { api }: { api: PanelApi } = $props();
+
+  let failureQueueId = $state<string | null>(null);
 
   const session = getPanelSession();
 
@@ -157,7 +160,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
         {#if attention === 0}
           Nothing needs attention
         {:else}
-          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need attention
+          {attention} {attention === 1 ? 'item needs' : 'items need'} attention
         {/if}
       </h2>
       {#if overview !== null}
@@ -237,11 +240,11 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
           <a class="object-row" href={inboxHref}>
             <span class="object-main">
               <span class="object-name-row">
-                <span class="object-name">Read the security notifications</span>
+                <span class="object-name">Review unread notifications</span>
                 <span class="mx-mark mx-pending"><span class="t">{unread} unread</span></span>
               </span>
               <span class="object-sum"
-                >GitHub told the owners something about this App and nobody has read it yet</span
+                >Operator activity in workspaces you own · unread in your inbox</span
               >
             </span>
             <span class="object-side"><Icon name="chevron-right" size="xs" /></span>
@@ -325,25 +328,34 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     {:else}
       <div class="object-list">
         {#each failures as item (item.failure.id)}
-          <a class="object-row" href={failuresHref}>
+          {@const classification = failureClassification(item.failure.retryable)}
+          <div class="object-row">
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name">
                   {failureAct(item.failure.stage)}
                   <code class="file-path">{repositoryName(item.failure.repository_full_name)}</code>
                 </span>
-                <Pill tone={item.failure.retryable ? 'warning' : 'danger'}>
-                  {item.failure.retryable ? 'Retrying' : 'Needs a fix'}
+                <Pill tone={classification.tone}>
+                  {classification.label}
                 </Pill>
               </span>
               <span class="object-sum"
                 >{item.workspace.display_name} · {sentenceCase(item.failure.reason)}
-                {item.failure.retryable ? '· Smyklot retries on its own ·' : '·'}
+                · {classification.guidance} ·
                 <RelativeTime value={item.failure.occurred_at} {nowMs} /></span
               >
             </span>
-            <span class="object-side"><Icon name="chevron-right" size="xs" /></span>
-          </a>
+            <span class="object-side">
+              {#if item.failure.queue_item_id}
+                <Button
+                  tone="quiet"
+                  onclick={() => (failureQueueId = item.failure.queue_item_id ?? null)}
+                  >Inspect queue item</Button
+                >
+              {/if}
+            </span>
+          </div>
         {/each}
       </div>
     {/if}
@@ -379,3 +391,11 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     </div>
   </Card>
 </div>
+
+<QueueInspector
+  checkEvidenceApi={api}
+  recoveryApi={api}
+  itemId={failureQueueId}
+  fetchItem={api.fetchRootQueueItem}
+  onClose={() => (failureQueueId = null)}
+/>

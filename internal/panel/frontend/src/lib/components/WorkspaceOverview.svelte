@@ -36,7 +36,9 @@
     if (status === null) return 0;
 
     return status.repositories.filter((row) =>
-      Object.values(row.cells).some((cell) => cell.state === 'pending'),
+      Object.values(row.cells).some((cell) =>
+        ['pending', 'needs_sync', 'proposed', 'declined'].includes(cell.state),
+      ),
     ).length;
   }
 </script>
@@ -53,7 +55,7 @@ what would otherwise be four visits.
 -->
 
 <script lang="ts">
-  import { syncIssues } from '../sync-health';
+  import { repositorySyncHealth, syncIssues } from '../sync-health';
   import { createQuery } from '@tanstack/svelte-query';
   import { useInterval } from 'runed';
   import { fade } from 'svelte/transition';
@@ -188,8 +190,11 @@ what would otherwise be four visits.
   const syncProblems = $derived(syncIssues(fleet, plan));
   const attention = $derived(syncProblems.length + broken.length);
 
-  const checked = $derived(fleet?.checked_at ?? plan?.computed_at ?? null);
+  const checked = $derived(fleet?.latest_observed_at ?? null);
 
+  const unchecked = $derived(
+    fleet?.repositories.filter((row) => repositorySyncHealth(row) === 'unchecked').length ?? 0,
+  );
   const drifted = $derived(driftedRepositories(fleet));
 
   function auditLine(entry: AuditEntry): string {
@@ -210,14 +215,14 @@ what would otherwise be four visits.
     <div class="card-head verdict-head">
       <h2 class="card-title">
         {#if attention === 0}
-          Nothing needs attention
+          {unchecked > 0 ? 'Repository checks are incomplete' : 'Nothing needs attention'}
         {:else}
-          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need attention
+          {attention} {attention === 1 ? 'item needs' : 'items need'} attention
         {/if}
       </h2>
       {#if checked !== null}
         <span class="card-note"
-          >Checked
+          >Latest repository observation:
           <strong><RelativeTime value={checked} {nowMs} /></strong></span
         >
       {/if}
@@ -382,7 +387,9 @@ what would otherwise be four visits.
         <span class="fact-dot" class:is-warn={drifted > 0}></span>
         <a href={syncHref}
           ><span class="band-trim"
-            >{#if drifted === 0}No sync differences reported{:else}{drifted}
+            >{#if unchecked > 0}{unchecked}
+              {unchecked === 1 ? 'repository needs' : 'repositories need'} a current check{:else if drifted === 0}No
+              sync differences reported{:else}{drifted}
               {drifted === 1 ? 'repository' : 'repositories'} out of sync{/if}</span
           ></a
         >

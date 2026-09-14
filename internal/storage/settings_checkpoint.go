@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // SettingsCheckpointScope says which settings boundary one checkpoint belongs
@@ -105,13 +104,13 @@ type SettingsCheckpointItem struct {
 // overrides. Deployment defaults are deliberately absent: a restore must put
 // the stored overrides back, then let the current deployment resolve them.
 type RuntimeSettingsDocument struct {
-	BackgroundWorkPaused bool           `json:"background_work_paused"`
-	BotConfig            *config.Config `json:"bot_config"`
-	LogLevel             *string        `json:"log_level"`
-	PollInterval         *time.Duration `json:"poll_interval"`
-	PendingCIQuietPeriod *time.Duration `json:"pending_ci_quiet_period"`
-	SessionTTL           *time.Duration `json:"session_ttl"`
-	PathIndexInterval    *time.Duration `json:"path_index_interval"`
+	BackgroundWorkPaused bool             `json:"background_work_paused"`
+	BotConfig            *RuntimeBehavior `json:"bot_config"`
+	LogLevel             *string          `json:"log_level"`
+	PollInterval         *time.Duration   `json:"poll_interval"`
+	PendingCIQuietPeriod *time.Duration   `json:"pending_ci_quiet_period"`
+	SessionTTL           *time.Duration   `json:"session_ttl"`
+	PathIndexInterval    *time.Duration   `json:"path_index_interval"`
 }
 
 // SettingsCheckpointCreate is one complete point-in-time snapshot. Every

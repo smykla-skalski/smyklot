@@ -13,89 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
-// ClaimDelivery atomically accepts an event revision once and distinguishes a
-// still-running attempt from a retained terminal outcome.
-func (s *Store) ClaimDelivery(
-	ctx context.Context,
-	claim storage.DeliveryClaim,
-) (storage.DeliveryClaimResult, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return storage.DeliveryClaimResult{}, fmt.Errorf("begin delivery claim: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// A retained claim conflicts and returns no row, which is how a duplicate
-	// delivery is recognized without asking the driver how many rows changed.
-	var claimID int64
-	err = tx.QueryRowContext(ctx, `
-INSERT INTO deliveries (
-    claim_key, delivery_id, target_id, repository_id, repository_full_name,
-    event, status, payload, claimed_at, next_attempt_at
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT DO NOTHING
-RETURNING id`,
-		claim.ClaimKey,
-		claim.DeliveryID,
-		claim.TargetID,
-		claim.RepositoryID,
-		claim.RepositoryFullName,
-		claim.Event,
-		storage.DeliveryRunning,
-		claim.Payload,
-		claim.ClaimedAt,
-		claim.ClaimedAt,
-	).Scan(&claimID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return storage.DeliveryClaimResult{}, fmt.Errorf("claim delivery: %w", err)
-	}
-
-	if errors.Is(err, sql.ErrNoRows) {
-		var status storage.DeliveryStatus
-		if err := tx.QueryRowContext(ctx, `
-	SELECT status FROM deliveries
-	WHERE claim_key = ?
-	  AND (status IN (?, ?) OR (status = ? AND retryable = FALSE))`,
-			claim.ClaimKey,
-			storage.DeliveryRunning,
-			storage.DeliverySucceeded,
-			storage.DeliveryFailed,
-		).Scan(&status); err != nil {
-			return storage.DeliveryClaimResult{}, fmt.Errorf("read retained delivery claim: %w", err)
-		}
-		disposition := storage.DeliveryClaimRetained
-		if status == storage.DeliveryRunning {
-			disposition = storage.DeliveryClaimInProgress
-		}
-		if err := tx.Commit(); err != nil {
-			return storage.DeliveryClaimResult{}, fmt.Errorf("commit duplicate delivery claim: %w", err)
-		}
-
-		return storage.DeliveryClaimResult{Disposition: disposition}, nil
-	}
-	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
-		ID: "delivery:" + strconv.FormatInt(claimID, 10), Kind: workqueue.KindWebhookDelivery,
-		Lane: workqueue.LaneWebhook, TargetID: claim.TargetID,
-		RepositoryID: claim.RepositoryID, SourceKind: queueSourceDelivery,
-		SourceID: strconv.FormatInt(claimID, 10), Title: "Webhook: " + claim.Event,
-		Summary: claim.RepositoryFullName, State: workqueue.StateScheduled,
-		NotBefore: claim.ClaimedAt,
-		ActorID:   queueActorSystem,
-		Details:   map[string]any{"delivery_id": claim.DeliveryID, "event": claim.Event},
-	}); err != nil {
-		return storage.DeliveryClaimResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return storage.DeliveryClaimResult{}, fmt.Errorf("commit delivery claim: %w", err)
-	}
-
-	return storage.DeliveryClaimResult{
-		ID:          claimID,
-		Disposition: storage.DeliveryClaimAccepted,
-	}, nil
-}
-
 // LeaseDelivery atomically reserves the oldest ready durable payload for one
 // executor. When nothing is ready it reports the earliest retry or lease expiry
 // so the dispatcher can sleep without polling.
@@ -186,7 +103,7 @@ func (s *Store) selectReadyDelivery(
 	var repositoryID sql.NullString
 	err = tx.QueryRowContext(ctx, `
 SELECT id, claim_key, delivery_id, target_id, repository_id,
-       repository_full_name, event, payload, attempt_count
+       repository_full_name, event, payload, attempt_count, COALESCE(source_order, id)
 FROM deliveries
 WHERE id = ? AND status = ? AND payload IS NOT NULL
   AND next_attempt_at <= ?
@@ -205,6 +122,7 @@ WHERE id = ? AND status = ? AND payload IS NOT NULL
 		&work.Event,
 		&work.Payload,
 		&work.Attempt,
+		&work.SourceOrder,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -319,87 +237,6 @@ DELETE FROM deliveries WHERE id = ? AND status = ?`,
 	return tx.Commit()
 }
 
-// CompleteDelivery marks a running delivery successful. Repeating the same
-// outcome is safe when a caller lost the first database result and retries.
-func (s *Store) CompleteDelivery(
-	ctx context.Context,
-	claimID int64,
-	completedAt time.Time,
-) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin delivery completion: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `
-UPDATE deliveries SET status = ?, finished_at = ?
-WHERE id = ? AND status IN (?, ?)`,
-		storage.DeliverySucceeded,
-		completedAt,
-		claimID,
-		storage.DeliveryRunning,
-		storage.DeliverySucceeded,
-	)
-	if err != nil {
-		return fmt.Errorf("complete delivery: %w", err)
-	}
-	if err := checkDeliveryUpdateFrom(ctx, tx, result, claimID); err != nil {
-		return err
-	}
-	if err := transitionLinkedQueueItem(
-		ctx, tx, "delivery:"+strconv.FormatInt(claimID, 10),
-		workqueue.StateSucceeded, completedAt, "Webhook delivered", queueActorSystem,
-	); err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
-// FailDelivery marks a running delivery failed with a sanitized reason.
-// Repeating the same outcome is safe when finalization is retried.
-func (s *Store) FailDelivery(
-	ctx context.Context,
-	change storage.DeliveryFailureChange,
-) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin delivery failure: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `
-UPDATE deliveries SET
-    status = ?,
-    stage = ?,
-    reason = ?,
-    retryable = ?,
-    finished_at = ?
-WHERE id = ? AND status IN (?, ?)`,
-		storage.DeliveryFailed,
-		change.Stage,
-		change.Reason,
-		change.Retryable,
-		change.FailedAt,
-		change.ClaimID,
-		storage.DeliveryRunning,
-		storage.DeliveryFailed,
-	)
-	if err != nil {
-		return fmt.Errorf("fail delivery: %w", err)
-	}
-	if err := checkDeliveryUpdateFrom(ctx, tx, result, change.ClaimID); err != nil {
-		return err
-	}
-	if err := transitionLinkedQueueItem(
-		ctx, tx, "delivery:"+strconv.FormatInt(change.ClaimID, 10),
-		workqueue.StateFailed, change.FailedAt, change.Reason, queueActorSystem,
-	); err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
 // RecoverRunningDeliveries requeues durable payloads that belonged to the
 // previous process and retains the old failure behavior for pre-inbox rows.
 // The deployment is intentionally single-replica, so no running row can still
@@ -465,16 +302,20 @@ FROM queue_items WHERE source_kind = 'delivery' AND state = 'retrying' AND updat
 
 const failureSelect = `
 SELECT
-    id,
-    delivery_id,
-    target_id,
-    repository_full_name,
-    event,
-    stage,
-    reason,
-    retryable,
-    finished_at
-FROM deliveries`
+    deliveries.id,
+    deliveries.delivery_id,
+    deliveries.target_id,
+    deliveries.repository_full_name,
+    deliveries.event,
+    deliveries.stage,
+    deliveries.reason,
+    deliveries.retryable,
+    deliveries.finished_at,
+    failure_queue.id
+FROM deliveries
+LEFT JOIN queue_items failure_queue
+  ON failure_queue.id = 'delivery:' || CAST(deliveries.id AS TEXT)
+  AND failure_queue.target_id = deliveries.target_id`
 
 // ListFailures returns one filtered page of sanitized delivery failures.
 func (s *Store) ListFailures(
@@ -514,17 +355,17 @@ func (s *Store) ListFailures(
 func failurePageOrder(order storage.HistoryOrder) (string, error) {
 	switch order {
 	case "", storage.HistoryNewest:
-		return "id DESC", nil
+		return "deliveries.id DESC", nil
 	case storage.HistoryOldest:
-		return "id ASC", nil
+		return "deliveries.id ASC", nil
 	case storage.HistoryStatusAscending:
-		return "retryable ASC, id DESC", nil
+		return "deliveries.retryable ASC, deliveries.id DESC", nil
 	case storage.HistoryStatusDescending:
-		return "retryable DESC, id DESC", nil
+		return "deliveries.retryable DESC, deliveries.id DESC", nil
 	case storage.HistoryRepositoryAscending:
-		return caseFold("repository_full_name") + " ASC, id DESC", nil
+		return caseFold("deliveries.repository_full_name") + " ASC, deliveries.id DESC", nil
 	case storage.HistoryRepositoryDescending:
-		return caseFold("repository_full_name") + " DESC, id DESC", nil
+		return caseFold("deliveries.repository_full_name") + " DESC, deliveries.id DESC", nil
 	default:
 		return "", fmt.Errorf("unsupported failure order %q", order)
 	}
@@ -534,19 +375,22 @@ func failureFilters(
 	targetID string,
 	page storage.FailurePageRequest,
 ) ([]string, []any) {
-	clauses := []string{queryTargetIDEquals, "status = ?"}
+	clauses := []string{"deliveries.target_id = ?", "deliveries.status = ?"}
 	arguments := []any{targetID, storage.DeliveryFailed}
 	if page.Query != "" {
-		columns := []string{"delivery_id", "repository_full_name", "event", "stage", "reason"}
+		columns := []string{
+			"deliveries.delivery_id", "deliveries.repository_full_name",
+			"deliveries.event", "deliveries.stage", "deliveries.reason",
+		}
 		clauses = append(clauses, containsAnyClause(columns...))
 		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if page.Retryable != nil {
-		clauses = append(clauses, "retryable = ?")
+		clauses = append(clauses, "deliveries.retryable = ?")
 		arguments = append(arguments, *page.Retryable)
 	}
 	if page.Since != nil {
-		clauses = append(clauses, "finished_at >= ?")
+		clauses = append(clauses, "deliveries.finished_at >= ?")
 		arguments = append(arguments, *page.Since)
 	}
 
@@ -596,6 +440,7 @@ SELECT COUNT(*) FROM deliveries WHERE id = ?`, claimID).Scan(&exists); err != ni
 func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 	var failure storage.DeliveryFailure
 	var occurredAt StoredTime
+	var queueItemID sql.NullString
 
 	if err := scanner.Scan(
 		&failure.ID,
@@ -607,11 +452,13 @@ func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 		&failure.Reason,
 		&failure.Retryable,
 		&occurredAt,
+		&queueItemID,
 	); err != nil {
 		return storage.DeliveryFailure{}, err
 	}
 
 	failure.OccurredAt = occurredAt.Time()
+	failure.QueueItemID = stringPointer(queueItemID)
 
 	return failure, nil
 }

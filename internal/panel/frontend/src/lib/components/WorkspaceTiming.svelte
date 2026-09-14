@@ -1,4 +1,11 @@
 <script lang="ts">
+  import ScheduleDatePreview from './ScheduleDatePreview.svelte';
+  import { focusInvalidControl } from '#lib/focus-invalid-control.js';
+  import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
+  import { scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleHoursProblems } from '#lib/schedule-validation.js';
+  import { exceptionInputs, type EditableException } from '#lib/schedule-exceptions.js';
+  import ScheduleExceptionsEditor from './ScheduleExceptionsEditor.svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { PanelApi } from '#lib/api.js';
@@ -16,6 +23,7 @@
   import { workloadCadenceDescription, workloadTitle } from '#lib/workloads.js';
 
   import Button from './Button.svelte';
+  import FormError from './FormError.svelte';
   import DurationInput from './DurationInput.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
@@ -112,6 +120,7 @@
   let windowMode = $state<'existing' | 'custom'>('existing');
   let chosenProfile = $state<string | null>(null);
   let customName = $state('Workspace hours');
+  let timezoneValid = $state(false);
   let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   let windows = $state.raw<EditableWindow[]>([
     { id: 'request-1', weekday: 1, start: '09:00', end: '17:00' },
@@ -120,7 +129,8 @@
     { id: 'request-4', weekday: 4, start: '09:00', end: '17:00' },
     { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
-  let exceptions = $state('');
+  let exceptions = $state.raw<EditableException[]>([]);
+  let showExceptionProblems = $state(false);
   let cadenceProblem = $state<string | null>(null);
   let cadence = $state<number | null | undefined>(undefined);
   let priority = $state<QueuePriority | null>(null);
@@ -148,29 +158,13 @@
     chosenProfile = null;
   }
 
-  function minute(value: string): number {
-    const [hour = '0', rest = '0'] = value.split(':');
-    return Number(hour) * 60 + Number(rest);
-  }
-
-  function parseExceptions(): ScheduleProfile['exceptions'] {
-    return exceptions
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [date = '', span = 'closed'] = line.split(/\s+/u, 2);
-        if (span === 'closed') return { date, closed: true };
-        const [from = '00:00', to = '00:00'] = span.split('-', 2);
-        return { date, closed: false, start_minute: minute(from), end_minute: minute(to) };
-      });
-  }
-
   async function send(): Promise<void> {
+    if (windowMode === 'custom' && !timezoneValid) return;
     const current = chosen;
     if (current === undefined || reason.trim() === '' || cadenceInvalid) return;
     busy = true;
     problem = '';
+    showExceptionProblems = true;
     try {
       const custom: ScheduleProfile = {
         id: '',
@@ -180,11 +174,19 @@
         revision: 0,
         windows: windows.map((window) => ({
           weekday: window.weekday,
-          start_minute: minute(window.start),
-          end_minute: minute(window.end),
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
         })),
-        exceptions: parseExceptions(),
+        exceptions: windowMode === 'custom' ? exceptionInputs(exceptions) : [],
       };
+      if (windowMode === 'custom') {
+        const invalid = scheduleHoursProblems(custom)[0];
+        if (invalid?.index !== undefined) {
+          await focusInvalidControl('workspace-timing-request');
+          return;
+        }
+        if (invalid !== undefined) throw new Error(invalid.message);
+      }
       await api.createTargetScheduleRequest(targetId, {
         kind,
         base_revision: current.revision,
@@ -267,7 +269,7 @@ answered a question a workspace never asks and hid the one it does.
   {/each}
 </div>
 
-{#if problem !== ''}
+{#if problem !== '' && !open}
   <div class="state-panel is-error" role="alert">
     <span><strong>Request failed</strong> · {problem}</span>
   </div>
@@ -322,10 +324,12 @@ answered a question a workspace never asks and hid the one it does.
         <span class="form-label">Name</span>
         <input class="text-input" bind:value={customName} />
       </label>
-      <label class="form-field">
-        <span class="form-label">Timezone</span>
-        <input class="text-input" bind:value={timezone} placeholder="Europe/Warsaw" />
-      </label>
+      <ScheduleTimezoneField
+        id="timing-timezone"
+        {api}
+        bind:value={timezone}
+        onValidityChange={(valid) => (timezoneValid = valid)}
+      />
       <div class="request-windows">
         <ScheduleWindowsEditor
           idPrefix="timing-window"
@@ -333,18 +337,27 @@ answered a question a workspace never asks and hid the one it does.
           onChange={(next) => (windows = next)}
         />
       </div>
-      <label class="form-field">
-        <span class="form-label">Date exceptions</span>
-        <textarea
-          class="text-input mono"
-          rows="4"
-          bind:value={exceptions}
-          placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea>
-      </label>
-      <p class="form-help">
-        One local date per line: <code>YYYY-MM-DD closed</code> or
-        <code>YYYY-MM-DD HH:MM-HH:MM</code>
-      </p>
+      <ScheduleExceptionsEditor
+        idPrefix="timing-exception"
+        entries={exceptions}
+        onChange={(next) => (exceptions = next)}
+        showProblems={showExceptionProblems}
+      />
+      <ScheduleDatePreview
+        id="timing-preview-date"
+        {api}
+        {timezoneValid}
+        profile={{
+          name: customName.trim(),
+          timezone: timezone.trim(),
+          windows: windows.map((window) => ({
+            weekday: window.weekday,
+            start_minute: scheduleMinute(window.start),
+            end_minute: scheduleMinute(window.end),
+          })),
+          exceptions: exceptionInputs(exceptions),
+        }}
+      />
     {/if}
 
     <div
@@ -384,31 +397,37 @@ answered a question a workspace never asks and hid the one it does.
       />
     </label>
 
-    <label class="form-field request-reason">
-      <span class="form-label">Reason</span>
+    <div class="form-field request-reason">
+      <label class="form-label" for="schedule-request-reason">Reason</label>
       <textarea
         class="text-input"
         rows="3"
+        id="schedule-request-reason"
+        required
+        aria-describedby="schedule-request-reason-help"
         bind:value={reason}
         placeholder="What this timing is getting in the way of"></textarea>
-    </label>
+      <p id="schedule-request-reason-help" class="form-help">
+        Required. Explain what the current timing prevents and how this change would help.
+      </p>
+    </div>
+    <FormError message={problem} />
   </div>
 
   {#snippet footer()}
     <Button onclick={() => (open = false)}>Cancel</Button>
     <Button
       tone="signal"
-      disabled={busy || reason.trim() === '' || cadenceInvalid}
+      disabled={busy ||
+        reason.trim() === '' ||
+        cadenceInvalid ||
+        (windowMode === 'custom' && !timezoneValid)}
       onclick={() => void send()}>{busy ? 'Sending…' : 'Send request'}</Button
     >
   {/snippet}
 </Modal>
 
 <style>
-  .form-help code {
-    font-family: var(--mono);
-  }
-
   .text-input {
     width: 100%;
   }

@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { PanelApi } from '../api';
   import { untrack } from 'svelte';
   import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
 
-  import { failureAct } from '../failures';
+  import { failureAct, failureClassification } from '../failures';
   import { sentenceCase } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type { TimeDisplay } from '../preferences';
@@ -15,6 +16,7 @@
     AuditHistoryRequest,
     AuditScope,
     DeliveryFailure,
+    QueueDetail,
     FailureHistoryRequest,
     FailureKind,
     HistorySort,
@@ -25,6 +27,7 @@
     RootRuntimeSettings,
   } from '../types';
   import { receipts } from '../receipts.svelte';
+  import QueueInspector from './QueueInspector.svelte';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
@@ -39,6 +42,8 @@
   import EmptyState from './EmptyState.svelte';
   import ListToolsMenu, { type ToolsFilter, type ToolsSort } from './ListToolsMenu.svelte';
   import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
+
+  let failureQueueId = $state<string | null>(null);
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'workspace' | 'root';
@@ -83,6 +88,10 @@
     fetchAudit,
     exportAudit,
     fetchFailures,
+    fetchQueueItem,
+    recoveryApi,
+    checkEvidenceApi,
+    queueTargetId,
     context = 'workspace',
     section,
     prefs = EPHEMERAL_PREFS,
@@ -108,6 +117,10 @@
      */
     exportAudit?: (request: AuditHistoryRequest) => string;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
+    fetchQueueItem?: (id: string) => Promise<QueueDetail>;
+    checkEvidenceApi?: Pick<PanelApi, 'fetchSyncCheckObservations'>;
+    recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
+    queueTargetId?: string;
     context?: HistoryContext;
     section?: HistoryType;
     prefs?: PrefsAccessor;
@@ -536,10 +549,14 @@
       value === undefined ? undefined : String(value);
     return [
       { value: 'all', label: 'All', badge: badge(counts?.all) },
-      { value: 'retryable', label: 'Retrying', badge: badge(counts?.retryable) },
+      {
+        value: 'retryable',
+        label: failureClassification(true).label,
+        badge: badge(counts?.retryable),
+      },
       {
         value: 'permanent',
-        label: 'Needs a fix',
+        label: failureClassification(false).label,
         badge: badge(counts === undefined ? undefined : Math.max(0, counts.all - counts.retryable)),
       },
     ];
@@ -992,6 +1009,7 @@ where the record is.
           <ul class="object-list">
             {#each failureRows as failure (failure.id)}
               {@const href = repositoryHref?.(failure) ?? null}
+              {@const classification = failureClassification(failure.retryable)}
               <li>
                 <div class="object-row">
                   <span class="object-main">
@@ -1002,11 +1020,8 @@ where the record is.
                         <code class="file-path">{repositoryName(failure.repository_full_name)}</code
                         >
                       </span>
-                      <!-- A verdict, not a taxonomy: "Retryable/Permanent" told a
-                           reader which branch of the code they were in. This says
-                           whether anybody has to do anything. -->
-                      <Pill tone={failure.retryable ? 'warning' : 'danger'}>
-                        {failure.retryable ? 'Retrying' : 'Needs a fix'}
+                      <Pill tone={classification.tone}>
+                        {classification.label}
                       </Pill>
                     </span>
                     <span class="object-sum" title={failureDetail(failure)}>
@@ -1015,7 +1030,7 @@ where the record is.
                       {#if context === 'root'}{`${failure.workspace?.display_name ?? 'The service itself'} · `}{/if}{sentenceCase(
                         failure.reason,
                       )}
-                      {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}
+                      · {classification.guidance} ·
                       <RelativeTime
                         value={failure.occurred_at}
                         nowMs={now}
@@ -1024,6 +1039,13 @@ where the record is.
                     </span>
                   </span>
                   <span class="object-side">
+                    {#if fetchQueueItem && failure.queue_item_id}
+                      <Button
+                        tone="quiet"
+                        onclick={() => (failureQueueId = failure.queue_item_id ?? null)}
+                        >Inspect queue item</Button
+                      >
+                    {/if}
                     {#if href !== null}
                       <Button
                         tone="quiet"
@@ -1059,6 +1081,17 @@ where the record is.
     {/if}
   </div>
 </section>
+
+{#if fetchQueueItem}
+  <QueueInspector
+    {checkEvidenceApi}
+    {recoveryApi}
+    itemId={failureQueueId}
+    targetId={queueTargetId}
+    fetchItem={fetchQueueItem}
+    onClose={() => (failureQueueId = null)}
+  />
+{/if}
 
 {#if settingsCheckpointId !== null && (settingsCheckpointRoot || settingsCheckpointTargetId !== null)}
   <SettingsCheckpointDialog

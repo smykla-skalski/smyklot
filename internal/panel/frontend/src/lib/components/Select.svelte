@@ -10,6 +10,7 @@
 <script lang="ts" generics="Value extends SelectValue">
   import { Select as Listbox } from 'bits-ui';
   import { untrack } from 'svelte';
+  import { createAttachmentKey } from 'svelte/attachments';
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
   import Icon from './Icon.svelte';
@@ -45,7 +46,15 @@
 
   const originalValue = untrack(() => value);
   const menuId = $props.id();
+  // The installed Bits UI PopperLayer consumes id without forwarding it to
+  // the content element. Keep the controlled popup identity on that element.
+  const contentIdentity = {
+    [createAttachmentKey()]: (node: HTMLElement) => {
+      node.id = menuId;
+    },
+  };
   let open = $state(false);
+  let menuLabel = $state('');
   let invalid = $state(false);
   let trigger = $state<HTMLButtonElement | null>(null);
 
@@ -109,6 +118,17 @@ A form-backed field preserves submission, required validation and reset behavior
     {disabled}
     {required}
     bind:open
+    onOpenChange={(next) => {
+      if (next) {
+        // Referencing a combobox names the popup from its value, which may be
+        // empty. Read its associated field labels when the popup opens instead.
+        menuLabel =
+          [...(trigger?.labels ?? [])]
+            .map((label) => label.textContent?.trim() ?? '')
+            .filter(Boolean)
+            .join(' ') || placeholder;
+      }
+    }}
     onValueChange={choose}
   >
     <Listbox.Trigger
@@ -130,14 +150,15 @@ A form-backed field preserves submission, required validation and reset behavior
         : (document.querySelector('.app-shell') ?? undefined)}
     >
       <Listbox.Content
+        {...contentIdentity}
         id={menuId}
         class={['select-menu', trigger?.closest('[role="dialog"]') && 'select-menu-in-dialog']}
         strategy="fixed"
         sideOffset={4}
         align="start"
         collisionPadding={8}
-        aria-label={rest['aria-label']}
-        aria-labelledby={!rest['aria-label'] ? trigger?.id : undefined}
+        aria-label={rest['aria-labelledby'] ? undefined : (rest['aria-label'] ?? menuLabel)}
+        aria-labelledby={rest['aria-labelledby']}
       >
         <Listbox.Viewport class="menu-list select-options">
           {#each entries as option (option.key)}
@@ -175,24 +196,3 @@ A form-backed field preserves submission, required validation and reset behavior
     />
   {/if}
 </span>
-
-<style>
-  :global(.select-menu) {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    color: var(--text-primary);
-    max-block-size: min(20rem, var(--bits-floating-available-height));
-    max-inline-size: var(--bits-floating-available-width);
-    min-inline-size: var(--bits-floating-anchor-width);
-    overflow: auto;
-    z-index: var(--layer-popover);
-  }
-  :global(.select-menu-in-dialog) {
-    z-index: var(--layer-dialog-popover);
-  }
-  :global(.select-options) {
-    min-inline-size: 0;
-  }
-</style>

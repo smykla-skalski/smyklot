@@ -32,6 +32,15 @@ var _ = Describe("SQLite store [Unit]", func() {
 
 			return store
 		},
+		RemoveQueueItem: func(ctx context.Context, itemID string) {
+			raw, err := sql.Open("sqlite", path)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			_, err = raw.ExecContext(ctx, "DELETE FROM queue_events WHERE queue_item_id = ?", itemID)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = raw.ExecContext(ctx, "DELETE FROM queue_items WHERE id = ?", itemID)
+			Expect(err).NotTo(HaveOccurred())
+		},
 		RejectSecurityNotifications: func(_ context.Context) {
 			raw, err := sql.Open("sqlite", path)
 			Expect(err).NotTo(HaveOccurred())

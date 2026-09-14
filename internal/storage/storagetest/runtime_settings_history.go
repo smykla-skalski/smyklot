@@ -92,7 +92,7 @@ func declareRuntimeSettingsHistorySpecs(
 			quiet := 45 * time.Second
 			sessionTTL := 2 * time.Hour
 			firstChange := storage.RuntimeSettingsChange{
-				BotConfig: botConfig, LogLevel: &warn,
+				BotConfig: runtimeBehavior(botConfig), LogLevel: &warn,
 				PollInterval: &poll, PendingCIQuietPeriod: &quiet, SessionTTL: &sessionTTL,
 				EffectivePendingCIQuietPeriod: quiet,
 				EffectiveSessionTTL:           sessionTTL,

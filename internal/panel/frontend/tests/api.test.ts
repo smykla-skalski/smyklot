@@ -330,6 +330,31 @@ describe('targets and repositories', () => {
     );
   });
 
+  it.each(['session_ttl_seconds', undefined, 42])(
+    'retains only string validation field identifiers: %s',
+    async (field) => {
+      const stub = stubFetch([
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'invalid_runtime_settings',
+              message: 'Session lifetime is invalid',
+              field,
+            },
+          }),
+          { status: 400 },
+        ),
+      ]);
+      const api = createPanelApi('/panel', stub.fetch);
+      await expect(api.fetchRootRuntimeSettings()).rejects.toMatchObject({
+        status: 400,
+        code: 'invalid_runtime_settings',
+        message: 'Session lifetime is invalid',
+        field: typeof field === 'string' ? field : undefined,
+      });
+    },
+  );
+
   it('keeps structured batch conflicts and their latest documents', async () => {
     const conflict =
       '{"error":{"code":"conflict","message":"settings changed in another session",' +
@@ -1269,4 +1294,59 @@ describe('history and authentication routes', () => {
       }),
     );
   });
+});
+
+it('fetches the exact check evidence page with encoded identities and cursor', async () => {
+  const page = { items: [], total: 0, next_cursor: null };
+  const stub = stubFetch([jsonResponse(200, page)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(
+    api.fetchSyncCheckObservations('target:1', 'check:one/two', {
+      limit: 10,
+      cursor: 'cursor+value',
+    }),
+  ).resolves.toEqual(page);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3A1/sync/checks/check%3Aone%2Ftwo/observations?limit=10&cursor=cursor%2Bvalue',
+  );
+});
+
+it('fetches personal sync acceptance history without inventing a total', async () => {
+  const page = {
+    items: [
+      {
+        action: 'check',
+        request_key: 'original',
+        check_id: 'check:1',
+        reason: 'Verify settings',
+        accepted_at: '2026-09-14T00:00:00Z',
+      },
+    ],
+    next_cursor: null,
+  };
+  const stub = stubFetch([jsonResponse(200, page)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(
+    api.fetchSyncRequests('target:one/two', { limit: 10, cursor: 'cursor+value' }),
+  ).resolves.toEqual(page);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3Aone%2Ftwo/sync/requests?limit=10&cursor=cursor%2Bvalue',
+  );
+});
+
+it('reads a selected check without conflating missing worker evidence with its result', async () => {
+  const result = {
+    check_id: 'check:one/two',
+    target_id: 'target:one/two',
+    observed_at: '2026-09-14T00:00:00Z',
+    result: { outcome: { summary: 'Original comparison' } },
+    execution: null,
+    check: { action: 'check', available: false },
+  };
+  const stub = stubFetch([jsonResponse(200, result)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(api.fetchSyncCheck('target:one/two', 'check:one/two')).resolves.toEqual(result);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3Aone%2Ftwo/sync/checks/check%3Aone%2Ftwo',
+  );
 });

@@ -1,3 +1,5 @@
+import { seedMockQueueEvents } from './queue-events.js';
+import type { RuntimeBehaviorIntent } from '../src/lib/runtime-behavior';
 import {
   CONFIG_FILE_STATUS_FIXTURES,
   REPOSITORY_CONFIG_FILE_STATES,
@@ -49,6 +51,9 @@ import type {
   RootPanelUser,
   PendingCIRequest,
   QueueItem,
+  QueueEvent,
+  SyncCheckObservation,
+  SyncCheckResponse,
   WorkspaceRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -208,7 +213,7 @@ export interface MockState {
   queueRest: Map<string, QueueItem>;
   runtime: {
     backgroundWorkPaused: boolean;
-    behaviorOverride: ConfigValues | null;
+    behaviorOverride: ConfigValues | RuntimeBehaviorIntent | null;
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
     pendingCIQuietPeriodOverride: number | null;
@@ -231,7 +236,29 @@ export interface MockState {
   sync: Map<string, SyncConfig>;
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
+  queueEvents: Map<string, QueueEvent[]>;
+  syncDispatchReceipts: Map<
+    string,
+    {
+      targetId: string;
+      planId: string;
+      expectedRevision: number;
+      reason: string;
+      queueId: string;
+      acceptedAt: string;
+    }
+  >;
+  syncCheckReceipts: Map<
+    string,
+    { targetId: string; reason: string; checkId: string; acceptedAt: string }
+  >;
+  syncCheckObservations: Map<string, SyncCheckObservation[]>;
+  syncCheckResults: Map<
+    string,
+    { targetId: string; result: NonNullable<SyncCheckResponse['result']> }
+  >;
   syncPlans: Map<string, SyncPlan>;
+  syncHistory: Map<string, SyncPlan[]>;
   /** The fleet: where every covered repository stands, per workspace. */
   syncStatus: Map<string, SyncStatus>;
 }
@@ -435,11 +462,23 @@ export function seed(
       ),
     );
   }
-  const failureReasons = [
-    'repository configuration is invalid',
-    'GitHub request timed out after credentials were refreshed',
-    'Smyklot no longer has access to this repository',
-    'command could not be applied to the pull request state',
+  const failureKinds = [
+    { stage: 'config', reason: 'repository configuration is invalid', retryable: false },
+    {
+      stage: 'github',
+      reason: 'GitHub request timed out after credentials were refreshed',
+      retryable: true,
+    },
+    {
+      stage: 'github',
+      reason: 'Smyklot no longer has access to this repository',
+      retryable: false,
+    },
+    {
+      stage: 'execute',
+      reason: 'command could not be applied to the pull request state',
+      retryable: false,
+    },
   ] as const;
   for (let index = 0; index < 27; index += 1) {
     const repository = cycled(organization.repositories, index);
@@ -449,9 +488,7 @@ export function seed(
       delivery_id: `${deliveryPrefix}-0000-4000-8000-${String(index + 3).padStart(12, '0')}`,
       repository_full_name: repository.detail.repository.full_name,
       event: index % 2 === 0 ? 'issue_comment' : 'pull_request',
-      stage: index % 3 === 0 ? 'config' : 'github',
-      reason: cycled(failureReasons, index),
-      retryable: index % 3 === 1,
+      ...cycled(failureKinds, index),
       occurred_at: iso(-(8 * 60 + index * 53) * 60_000),
     });
   }
@@ -510,11 +547,44 @@ export function seed(
     capabilities: capabilitiesFor('none'),
   });
   const queue = queueSeeds(iso).filter((item) => item.id !== 'queue-sync-scheduled');
+  // Keep both retained and expired failure records, as the durable inbox does.
+  for (const [index, failure] of organization.failures.slice(0, 2).entries()) {
+    const queueId = `delivery:${failure.id}`;
+    failure.queue_item_id = queueId;
+    queue.push({
+      id: queueId,
+      kind: 'webhook_delivery',
+      lane: 'webhook',
+      target_id: organization.value.id,
+      source_kind: 'delivery',
+      source_id: failure.id,
+      title: `Process ${failure.event} for ${failure.repository_full_name}`,
+      summary: failure.reason,
+      state: 'failed',
+      priority: 'normal',
+      priority_overridden: false,
+      window_mode: 'respect',
+      immediate: true,
+      work_ahead: 0,
+      progress_current: 0,
+      progress_total: 0,
+      attempt: failure.retryable ? 5 : 1,
+      revision: 1,
+      not_before: failure.occurred_at,
+      eligible_at: failure.occurred_at,
+      created_at: failure.occurred_at,
+      updated_at: failure.occurred_at,
+      finished_at: failure.occurred_at,
+      details: { delivery_id: index + 1, event: failure.event },
+    });
+  }
   const automaticSync = queue.find((item) => item.id === 'queue-sync-apply');
   if (automaticSync !== undefined) {
     delete automaticSync.repository_id;
     delete automaticSync.repository_name;
     delete automaticSync.started_at;
+    automaticSync.source_kind = 'sync_plan';
+    automaticSync.source_id = 'plan-1';
     automaticSync.title = 'Sync shared configuration';
     automaticSync.summary = '14 changes queued automatically';
     automaticSync.state = 'scheduled';
@@ -735,6 +805,28 @@ export function seed(
         },
       ],
     ]),
+    queueEvents: seedMockQueueEvents(queue),
+    syncCheckReceipts: new Map(),
+    syncDispatchReceipts: new Map(),
+    syncCheckObservations: new Map(),
+    syncCheckResults: new Map(),
+    syncHistory: new Map([
+      [
+        organization.value.id,
+        Array.from({ length: 24 }, (_, index): SyncPlan => ({
+          ...syncPlanSeed(iso),
+          id: `history-${index + 1}`,
+          state: index % 4 === 0 ? 'failed' : 'applied',
+          computed_at: iso(-(index + 1) * 3600000),
+          finished_at: iso(-(index + 1) * 3600000 + 60000),
+          actions: syncPlanSeed(iso).actions.map((action, actionIndex) => ({
+            ...action,
+            state: index % 4 === 0 && actionIndex === 0 ? 'failed' : 'applied',
+            error: index % 4 === 0 && actionIndex === 0 ? 'GitHub refused the change' : undefined,
+          })),
+        })),
+      ],
+    ]),
     syncPlans: new Map([
       [
         organization.value.id,
@@ -801,10 +893,12 @@ export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
   const cell = (mark: Mark): SyncCell => {
     if (mark === 'off') return { state: 'off' };
     if (mark === 'ref') return { state: 'refused' };
-    return mark > 0 ? { state: 'pending', changes: mark } : { state: 'in_step' };
+    return mark > 0
+      ? { state: 'pending', changes: mark }
+      : { state: 'in_step', observed_at: iso(-5 * 60_000), observed_outcome: 'matched' };
   };
   return {
-    checked_at: iso(-5 * 60_000),
+    latest_observed_at: iso(-5 * 60_000),
     repositories: fleet.map(([repository, labels, settings, rulesets, files]) => ({
       repository,
       cells: {
@@ -1805,6 +1899,8 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
     {
       ...common,
       id: 'queue-reaction-retry',
+      source_kind: 'recurring',
+      source_id: 'reaction-scan:4003',
       kind: 'reaction_scan',
       lane: 'maintenance',
       repository_id: '4003',
@@ -1835,6 +1931,8 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
       eligible_at: iso(-90 * 60_000),
       created_at: iso(-90 * 60_000),
       updated_at: iso(-88 * 60_000),
+      started_at: iso(-89 * 60_000),
+      attempt: 1,
       finished_at: iso(-88 * 60_000),
       actions: [],
     },

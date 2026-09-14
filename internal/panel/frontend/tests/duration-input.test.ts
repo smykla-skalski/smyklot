@@ -12,6 +12,25 @@ const picker = () =>
   screen.getByRole('combobox', { name: 'Quiet period unit' }) as HTMLButtonElement;
 
 describe('DurationInput [Component]', () => {
+  it('describes server rejection without feeding it back as client validation', async () => {
+    const onValidityChange = vi.fn();
+    const props = {
+      value: 90,
+      label: 'Quiet period',
+      serverProblem: 'The service rejected this duration',
+      onValidityChange,
+    };
+    const view = render(DurationInput, props);
+    expect(input().getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById(input().getAttribute('aria-describedby')!)?.textContent).toBe(
+      props.serverProblem,
+    );
+    expect(onValidityChange).toHaveBeenLastCalledWith(null);
+    await view.rerender({ ...props, serverProblem: null });
+    expect(input().getAttribute('aria-invalid')).toBe('false');
+    expect(input().getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('uses shared input and select controls and changes units without staging a duration', async () => {
     const onChange = vi.fn();
     render(DurationInput, { value: 90, label: 'Quiet period', onChange });

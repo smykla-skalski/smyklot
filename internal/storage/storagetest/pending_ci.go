@@ -16,6 +16,7 @@ import (
 )
 
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	declareSourcePreviewSpecs(runtime)
 	seedCheckCatalog := func(ctx context.Context, store storage.Store, now time.Time) {
 		GinkgoHelper()
 		Expect(store.ReconcileInstallation(ctx, storage.InstallationSnapshot{

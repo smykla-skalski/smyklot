@@ -101,7 +101,7 @@ describe('configured file formatting in the development panel', () => {
     { format: 'jsonc', path: '.config/quality.jsonc' },
   ])('saves an inline length cap with mixed $format collections', async ({ format, path }) => {
     const page = await panel.browser.newPage({
-      viewport: { width: 1440, height: 1000 },
+      viewport: { width: 1920, height: 1200 },
       reducedMotion: 'reduce',
     });
     page.setDefaultTimeout(8000);
@@ -191,9 +191,9 @@ describe('configured file formatting in the development panel', () => {
         .toBe(rendered.final_content.trimEnd());
       const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
       if (directory) await mkdir(directory, { recursive: true });
-      for (const width of format === 'json' ? [375, 768, 1024, 1440] : [1440]) {
+      for (const width of format === 'json' ? [375, 768, 1024, 1440] : [1920]) {
         for (const colorScheme of ['light', 'dark'] as const) {
-          await page.setViewportSize({ width, height: 1000 });
+          await page.setViewportSize({ width, height: width === 1920 ? 1200 : 1000 });
           await page.emulateMedia({ colorScheme });
           await expect
             .poll(() => page.locator('html').getAttribute('data-theme'))
@@ -249,7 +249,9 @@ describe('configured file formatting in the development panel', () => {
               return label.left >= track.left - 1 && label.right <= track.right + 1;
             });
             expect(visible).toBe(true);
-            expect((await control.boundingBox())!.y).toBeCloseTo(anchor, 1);
+            // Focus scrolling can round fractional layout coordinates. Reject an
+            // actual jump while allowing less than one CSS pixel of rounding.
+            expect(Math.abs((await control.boundingBox())!.y - anchor)).toBeLessThan(1);
             await page.keyboard.press('ArrowLeft');
             await page.keyboard.press('ArrowLeft');
             await expect.poll(() => auto.isChecked()).toBe(true);

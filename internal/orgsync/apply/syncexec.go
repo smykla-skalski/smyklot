@@ -11,7 +11,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -190,23 +189,13 @@ func (s *Engine) applySyncPlan(
 		return orgsync.Outcome{}, err
 	}
 
-	// What each repository would have once this plan lands, computed the same
-	// way the planner computes what to compare against. Both call the same
-	// function, so a value recorded here is a value the next plan will test -
-	// two spellings of the same idea would drift, and the drift would look like
-	// a repository that never settles.
-	digests, err := s.syncDigests(ctx, lease.Plan.TargetID)
-	if err != nil {
-		return orgsync.Outcome{}, err
-	}
-
 	var outcome orgsync.Outcome
 
 	for _, work := range orgsync.Schedule(lease.Actions) {
 		err := s.applyRepositoryIfEnabled(
 			ctx, lease.Plan.TargetID, work, &outcome,
 			func(repository storage.Repository) error {
-				s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
+				s.applyRepositoryWork(ctx, client, repository, work, &outcome)
 
 				return nil
 			},
@@ -288,7 +277,6 @@ func (s *Engine) applyRepositoryWork(
 	client *github.Client,
 	repository storage.Repository,
 	work orgsync.RepositoryWork,
-	digests syncDigestIndex,
 	outcome *orgsync.Outcome,
 ) {
 	target := syncTargetFor(repository)
@@ -311,21 +299,31 @@ func (s *Engine) applyRepositoryWork(
 			continue
 		}
 
-		applied := s.applyKind(ctx, client, target, kind, outcome)
+		observation, applied := s.applyKind(ctx, client, target, kind, outcome)
 		if !applied {
 			blocker = kind.Kind
 
 			continue
 		}
 
+		// Carried actions establish no fresh observation. Keep any existing
+		// evidence, and let the planner inspect a kind without a state row.
+		if observation.state == "" {
+			continue
+		}
+
 		// Only a kind whose every action succeeded records a digest. A kind
 		// that half-applied has to be planned again, and recording it would
 		// tell the next reconcile that work nobody did is done.
+		digest := plannedKindDigest(kind)
 		outcome.Applied = append(outcome.Applied, orgsync.RepositoryState{
-			RepositoryID:  repository.ID,
-			Kind:          kind.Kind,
-			AppliedDigest: digests.of(repository, kind.Kind),
-			AppliedAt:     time.Now().UTC(),
+			RepositoryID:   repository.ID,
+			Kind:           kind.Kind,
+			AppliedDigest:  digest,
+			AppliedAt:      time.Now().UTC(),
+			Observation:    observation.state,
+			ProposalURL:    observation.proposalURL,
+			ObservedDigest: digest,
 		})
 	}
 }
@@ -359,7 +357,7 @@ func (s *Engine) applyKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) bool {
+) (kindObservation, bool) {
 	// A kind that proposes is one change, not a list of them. Every path a
 	// repository needs goes into one commit behind one pull request, so they
 	// are applied together and share whatever becomes of it.
@@ -368,6 +366,7 @@ func (s *Engine) applyKind(
 	}
 
 	succeeded := true
+	var observation kindObservation
 
 	for _, action := range work.Actions {
 		// Work an earlier attempt already settled. A lease carries every action
@@ -393,11 +392,12 @@ func (s *Engine) applyKind(
 			continue
 		}
 
+		observation.state = orgsync.ObservationApplied
 		outcome.Apply(action)
 		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 	}
 
-	return succeeded
+	return observation, succeeded
 }
 
 // recordSyncAction writes what became of one action.
@@ -414,7 +414,7 @@ func (s *Engine) recordSyncAction(
 	blocker orgsync.Kind,
 ) {
 	if err := s.store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
-		ActionID: action.ID, State: state, Error: reason, Blocker: blocker,
+		ActionID: action.ID, State: state, Error: reason, Blocker: blocker, ProposalURL: action.ProposalURL,
 	}); err != nil {
 		logging.From(ctx).Error("could not record what became of a sync action",
 			"subject", action.Subject, "error", err)
@@ -439,7 +439,7 @@ func (s *Engine) applyFileKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) bool {
+) (kindObservation, bool) {
 	pending := slices.ContainsFunc(work.Actions, func(action orgsync.Action) bool {
 		return action.State == orgsync.ActionPending
 	})
@@ -452,10 +452,10 @@ func (s *Engine) applyFileKind(
 			succeeded = succeeded && action.State == orgsync.ActionApplied
 		}
 
-		return succeeded
+		return kindObservation{}, succeeded
 	}
 
-	err := applyFileActions(ctx, client, target, work.Actions)
+	observation, err := applyFileActions(ctx, client, target, work.Actions)
 	if err != nil {
 		logging.From(ctx).Warn("sync files failed", "error", err)
 	}
@@ -467,6 +467,7 @@ func (s *Engine) applyFileKind(
 		// recording the next would otherwise leave the first saying "failed"
 		// about a change that is now in the repository's proposal.
 		if err == nil {
+			action.ProposalURL = observation.proposalURL
 			outcome.Apply(action)
 			s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 
@@ -486,7 +487,7 @@ func (s *Engine) applyFileKind(
 		s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
 	}
 
-	return err == nil
+	return observation, err == nil
 }
 
 // applyAction performs one action against GitHub.
@@ -557,64 +558,20 @@ func unavailableForTarget(
 	return orgsync.Unavailable{}, false
 }
 
-// syncDigestIndex answers what a repository and kind should record once its
-// work lands.
-type syncDigestIndex struct {
-	configs     map[orgsync.Kind]string
-	overrides   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
-	formatting  config.FormattingPolicy
-	targetPatch config.Patch
-}
-
-func (i syncDigestIndex) of(repository storage.Repository, kind orgsync.Kind) string {
-	var inputs []orgsync.DigestInput
-	if kind == orgsync.KindFiles {
-		policy := repositoryFormattingPolicy(i.formatting, i.targetPatch, repository)
-		inputs = append(inputs, orgsync.DigestInput{
-			Name: digestInputFormatting, Digest: orgsync.DigestFormattingPolicy(policy),
-		})
+// plannedKindDigest never substitutes present settings for historical inputs.
+// A legacy or inconsistent plan can record its result, but cannot establish a
+// cache hit or evidence that the current settings were checked.
+func plannedKindDigest(work orgsync.KindWork) string {
+	if len(work.Actions) == 0 {
+		return ""
 	}
-
-	return orgsync.DigestRepositoryKindWithInputs(
-		i.configs[kind], i.overrides[repository.ID][kind], inputs,
-	)
-}
-
-// syncDigests reads what an installation has configured, once per plan rather
-// than once per repository.
-func (s *Engine) syncDigests(ctx context.Context, targetID string) (syncDigestIndex, error) {
-	configs, err := s.store.ListSyncConfigs(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync configuration: %w", err)
-	}
-
-	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync overrides: %w", err)
-	}
-	target, err := s.store.GetTarget(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync installation: %w", err)
-	}
-
-	index := syncDigestIndex{
-		configs:     make(map[orgsync.Kind]string, len(configs)),
-		overrides:   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
-		formatting:  s.formattingPolicy(),
-		targetPatch: target.ConfigPatch,
-	}
-
-	for _, config := range configs {
-		index.configs[config.Kind] = config.Digest
-	}
-	for _, override := range overrides {
-		if index.overrides[override.RepositoryID] == nil {
-			index.overrides[override.RepositoryID] = map[orgsync.Kind]*orgsync.RepositoryOverride{}
+	digest := work.Actions[0].InputDigest
+	for _, action := range work.Actions {
+		if action.InputDigest != digest {
+			return ""
 		}
-		index.overrides[override.RepositoryID][override.Kind] = &override
 	}
-
-	return index, nil
+	return digest
 }
 
 // installationClient mints a client for one installation.

@@ -479,10 +479,13 @@ inside it.
     />
   {:else if target !== null && view === 'history'}
     <HistoryPanel
+      checkEvidenceApi={api}
+      recoveryApi={api}
       targetId={workspace.id}
       section={historySection}
       fetchAudit={(request) => api.fetchRootTargetAudit(workspace.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(workspace.id, request)}
+      fetchQueueItem={api.fetchRootQueueItem}
       fetchSettingsCheckpoint={api.fetchRootWorkspaceSettingsCheckpoint}
       fetchSettingsBaseline={api.fetchRootWorkspaceSettingsBaseline}
       restoreSettingsCheckpoint={api.restoreRootWorkspaceSettingsCheckpoint}

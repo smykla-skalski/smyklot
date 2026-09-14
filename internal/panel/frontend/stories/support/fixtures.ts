@@ -196,13 +196,13 @@ export const SYNC_PLAN: SyncPlan | null = MOCK.syncPlans.get(TARGET.id) ?? null;
 
 /** The fleet state the mock serves beside the plan. */
 export const SYNC_STATUS: SyncStatus = MOCK.syncStatus.get(TARGET.id) ?? {
-  checked_at: at(0),
+  latest_observed_at: at(0),
   repositories: [],
 };
 
 /** The same fleet after a sweep found no drift, for settled-state stories. */
 export const SYNC_STATUS_IN_STEP: SyncStatus = {
-  checked_at: SYNC_STATUS.checked_at,
+  latest_observed_at: SYNC_STATUS.latest_observed_at,
   repositories: SYNC_STATUS.repositories.map((row) => ({
     repository: row.repository,
     cells: {

@@ -67,6 +67,19 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:storage:sync-requests"]
+description = "Check accepted sync request reads on SQLite and PostgreSQL"
+env = { CGO_ENABLED = "1" }
+run = '''
+set -eu
+: "${SMYKLOT_TEST_POSTGRES_DSN:?Run mise run db:dev and set its DSN first}"
+mkdir -p tmp/storage
+ginkgo --race --procs=2 --fail-on-empty --focus='accepted sync request discovery' ./internal/storage/sqlite
+ginkgo --race --procs=2 --fail-on-empty --focus='accepted sync request discovery' \
+  --json-report=sync-requests-postgres.json --output-dir=tmp/storage ./internal/storage/postgres
+jq -e '[.[].SpecReports[]? | select((.ContainerHierarchyTexts | join(" ")) | contains("accepted sync request discovery"))] | length > 0 and all(.[]; .State == "passed")' tmp/storage/sync-requests-postgres.json > /dev/null
+'''
+
 [tasks."test:config-files"]
 description = "Check configuration file round trips and bidirectional reconciliation"
 env = { CGO_ENABLED = "1" }
@@ -476,7 +489,40 @@ npm run test:browser -- \
   tests/browser/queue-list.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
-  tests/browser/schedules.test.ts
+  tests/browser/failure-status.test.ts \
+  tests/browser/schedules.test.ts \
+  tests/browser/access-decisions.test.ts \
+  tests/browser/delivery-retry.test.ts \
+  tests/browser/inline-word-spacing.test.ts \
+  tests/browser/notification-overview.test.ts \
+  tests/browser/sync-check-controls.test.ts \
+  tests/browser/sync-check-evidence.test.ts \
+  tests/browser/sync-check-receipt.test.ts \
+  tests/browser/sync-check-recovery.test.ts \
+  tests/browser/sync-check-result.test.ts \
+  tests/browser/sync-confirmation-viewer.test.ts \
+  tests/browser/sync-deferred-blocker.test.ts \
+  tests/browser/sync-dispatch-capability.test.ts \
+  tests/browser/sync-dispatch-recovery.test.ts \
+  tests/browser/sync-empty-recovery.test.ts \
+  tests/browser/sync-execution.test.ts \
+  tests/browser/sync-intent.test.ts \
+  tests/browser/sync-late-acceptance.test.ts \
+  tests/browser/sync-late-outcome.test.ts \
+  tests/browser/sync-mutation-refresh.test.ts \
+  tests/browser/sync-operation.test.ts \
+  tests/browser/sync-read-state.test.ts \
+  tests/browser/sync-request-confirmation.test.ts \
+  tests/browser/sync-requests.test.ts \
+  tests/browser/sync-retained-check.test.ts \
+  tests/browser/sync-storage-recovery.test.ts \
+  tests/browser/runtime-ownership.test.ts \
+  tests/browser/contextual-sidebar.test.ts \
+  tests/browser/console-landmarks.test.ts \
+  tests/browser/search-accessibility.test.ts \
+  tests/browser/invitation-recovery.test.ts \
+  tests/browser/sidebar-collapse.test.ts \
+  tests/browser/settings-toc.test.ts
 '''
 
 [tasks."panel:assets:generate"]
@@ -505,6 +551,7 @@ sources = [
   "cmd/panel-render-bridge/**/*.go",
   "internal/orgsync/**/*.go",
   "internal/panelrenderbridge/**/*.go",
+  "internal/workqueue/**/*.go",
   "pkg/config/**/*.go",
   "go.mod",
   "go.sum",

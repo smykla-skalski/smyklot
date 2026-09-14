@@ -1,4 +1,17 @@
 <script lang="ts">
+  import ScheduleDatePreview from './ScheduleDatePreview.svelte';
+  import { focusInvalidControl } from '#lib/focus-invalid-control.js';
+  import type { PanelApi } from '#lib/api.js';
+  import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
+  import { scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleExceptionProblems, scheduleWindowProblems } from '#lib/schedule-validation.js';
+  import {
+    editableExceptions,
+    exceptionDraft,
+    exceptionInputs,
+    type EditableException,
+  } from '#lib/schedule-exceptions.js';
+  import ScheduleExceptionsEditor from './ScheduleExceptionsEditor.svelte';
   import { onMount } from 'svelte';
   import type { ScheduleProfile, ScheduleProfileInput } from '#lib/types.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -7,6 +20,7 @@
   import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
 
   const {
+    api,
     profile,
     open,
     busy,
@@ -14,6 +28,7 @@
     onClose,
     onSubmit,
   }: {
+    api: PanelApi;
     profile: ScheduleProfile | null;
     open: boolean;
     busy: boolean;
@@ -22,7 +37,9 @@
     onSubmit: (input: ScheduleProfileInput) => void;
   } = $props();
 
+  let inputProblem = $state('');
   let name = $state('');
+  let timezoneValid = $state(false);
   let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   let windows = $state.raw<EditableWindow[]>([
     { id: 'default-1', weekday: 1, start: '09:00', end: '17:00' },
@@ -31,14 +48,19 @@
     { id: 'default-4', weekday: 4, start: '09:00', end: '17:00' },
     { id: 'default-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
-  let exceptions = $state('');
-  const exceptionExample = '2026-12-25 closed\n2026-12-31 09:00-13:00';
+  let exceptions = $state.raw<EditableException[]>([]);
+  let showExceptionProblems = $state(false);
+  let baseline = $state('');
+  let confirmingDiscard = $state(false);
+  let editingControl = $state<HTMLElement | null>(null);
+  const changed = $derived(baseline !== '' && snapshot() !== baseline);
 
   onMount(() => {
     name = profile?.name ?? '';
     timezone = profile?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     const storedWindows = profile?.windows ?? [];
-    if (storedWindows.length > 0) {
+    // Defaults belong only to a new profile. Empty saved hours mean exceptions only.
+    if (profile !== null) {
       windows = storedWindows.map((window, index) => ({
         id: `stored-${index}`,
         weekday: window.weekday,
@@ -46,64 +68,74 @@
         end: minuteTime(window.end_minute),
       }));
     }
-    exceptions = (profile?.exceptions ?? [])
-      .map((entry) =>
-        entry.closed
-          ? `${entry.date} closed`
-          : `${entry.date} ${minuteTime(entry.start_minute ?? 0)}-${minuteTime(entry.end_minute ?? 0)}`,
-      )
-      .join('\n');
+    exceptions = editableExceptions(profile?.exceptions ?? []);
+    baseline = snapshot();
   });
+
+  /** Window ids are editing handles, not settings. Restoring the same hours is clean. */
+  function snapshot(): string {
+    return JSON.stringify({
+      name: name.trim(),
+      timezone: timezone.trim(),
+      windows: windows
+        .map(({ weekday, start, end }) => ({ weekday, start, end }))
+        .sort(
+          (a, b) =>
+            a.weekday - b.weekday || a.start.localeCompare(b.start) || a.end.localeCompare(b.end),
+        ),
+      exceptions: exceptionDraft(exceptions),
+    });
+  }
+
+  function beforeClose(): boolean {
+    if (busy) return false;
+    if (!changed) return true;
+    if (!confirmingDiscard) {
+      const active = document.activeElement;
+      editingControl =
+        active instanceof HTMLElement && active.closest('#profile-editor')
+          ? active
+          : document.getElementById('profile-editor');
+      confirmingDiscard = true;
+    }
+    return false;
+  }
 
   function minuteTime(minutes: number): string {
     return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   }
 
-  function timeMinute(value: string): number {
-    const [hour = '0', minute = '0'] = value.split(':');
-    return Number(hour) * 60 + Number(minute);
-  }
-
   function windowsValid(): boolean {
-    const byDay: Array<Array<{ start: number; end: number }>> = Array.from({ length: 7 }, () => []);
-    for (const window of windows) {
-      const start = timeMinute(window.start);
-      const end = timeMinute(window.end);
-      if (start >= end) return false;
-      byDay[window.weekday]?.push({ start, end });
-    }
-    for (const day of byDay) {
-      day.sort((left, right) => left.start - right.start);
-      if (day.some((entry, index) => index > 0 && entry.start < (day[index - 1]?.end ?? 0)))
-        return false;
-    }
-
-    return windows.length > 0;
+    return (
+      scheduleWindowProblems(
+        windows.map((window) => ({
+          weekday: window.weekday,
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
+        })),
+      ).length === 0 &&
+      (windows.length > 0 || exceptions.length > 0)
+    );
   }
 
-  function parseExceptions(): ScheduleProfileInput['exceptions'] {
-    return exceptions
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [date = '', span = 'closed'] = line.split(/\s+/, 2);
-        if (span === 'closed') return { date, closed: true };
-        const [from = '00:00', to = '00:00'] = span.split('-', 2);
-        return { date, closed: false, start_minute: timeMinute(from), end_minute: timeMinute(to) };
-      });
-  }
-
-  function submit(): void {
+  async function submit(): Promise<void> {
+    if (!timezoneValid) return;
+    inputProblem = '';
+    showExceptionProblems = true;
+    const parsedExceptions = exceptionInputs(exceptions);
+    if (scheduleExceptionProblems(parsedExceptions).length > 0) {
+      await focusInvalidControl('profile-editor');
+      return;
+    }
     onSubmit({
       name: name.trim(),
       timezone: timezone.trim(),
       windows: windows.map((window) => ({
         weekday: window.weekday,
-        start_minute: timeMinute(window.start),
-        end_minute: timeMinute(window.end),
+        start_minute: scheduleMinute(window.start),
+        end_minute: scheduleMinute(window.end),
       })),
-      exceptions: parseExceptions(),
+      exceptions: parsedExceptions,
       expected_revision: profile?.revision ?? 0,
     });
   }
@@ -128,8 +160,9 @@ changing a window here changes when every policy that names it runs.
   busyLabel="Saving…"
   confirmLabel="Save profile"
   confirmTone="signal"
-  confirmDisabled={name.trim() === '' || timezone.trim() === '' || !windowsValid()}
+  confirmDisabled={name.trim() === '' || !timezoneValid || !windowsValid()}
   {onClose}
+  {beforeClose}
   onConfirm={submit}
 >
   <div class="form-stack">
@@ -154,34 +187,51 @@ changing a window here changes when every policy that names it runs.
         placeholder="Europe business hours"
       />
     </label>
-    <label class="form-field" for="profile-timezone">
-      <span class="form-label">Timezone</span>
-      <input
-        class="text-input"
-        id="profile-timezone"
-        bind:value={timezone}
-        placeholder="Europe/Warsaw"
-      />
-    </label>
+    <ScheduleTimezoneField
+      id="profile-timezone"
+      {api}
+      bind:value={timezone}
+      onValidityChange={(valid) => (timezoneValid = valid)}
+    />
     <ScheduleWindowsEditor
       idPrefix="profile-window"
       {windows}
       onChange={(next) => (windows = next)}
     />
-    <div class="form-field">
-      <label class="form-label" for="profile-exceptions">Date exceptions</label>
-      <textarea
-        class="text-input mono"
-        id="profile-exceptions"
-        aria-describedby="profile-exceptions-help"
-        rows="4"
-        bind:value={exceptions}
-        placeholder={exceptionExample}></textarea>
-      <p id="profile-exceptions-help" class="form-help">
-        Override weekly hours for a local date · One per line:<br />
-        <code>YYYY-MM-DD closed</code> or <code>YYYY-MM-DD HH:MM-HH:MM</code>
-      </p>
-    </div>
-    <FormError message={error} />
+    <ScheduleExceptionsEditor
+      idPrefix="profile-exception"
+      entries={exceptions}
+      onChange={(next) => (exceptions = next)}
+      showProblems={showExceptionProblems}
+    />
+    <ScheduleDatePreview
+      id="profile-preview-date"
+      {api}
+      {timezoneValid}
+      profile={{
+        name: name.trim(),
+        timezone: timezone.trim(),
+        windows: windows.map((window) => ({
+          weekday: window.weekday,
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
+        })),
+        exceptions: exceptionInputs(exceptions),
+      }}
+    />
+    <FormError message={inputProblem || error} />
   </div>
+  <ConfirmDialog
+    id="discard-hours-changes"
+    open={confirmingDiscard}
+    title="Discard hours changes?"
+    returnFocus={editingControl}
+    onClose={() => (confirmingDiscard = false)}
+    onConfirm={onClose}
+    confirmLabel="Discard changes"
+    confirmTone="stop"
+    cancelLabel="Keep editing"
+  >
+    <p class="form-help">Your changes to this hours profile will be lost</p>
+  </ConfirmDialog>
 </ConfirmDialog>

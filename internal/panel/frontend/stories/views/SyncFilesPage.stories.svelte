@@ -110,7 +110,7 @@
   };
 
   const STATUS: SyncStatus = {
-    checked_at: new Date(NOW - 5 * 60_000).toISOString(),
+    latest_observed_at: new Date(NOW - 5 * 60_000).toISOString(),
     repositories: [
       {
         repository: 'legacy-service',
@@ -141,7 +141,7 @@
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: fn(),
       onToggleEnabled: fn(),
-      onChangeDocument: fn(),
+      onChangeDocument: fn(() => true),
     },
   });
 </script>

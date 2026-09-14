@@ -18,7 +18,7 @@ func (s *Store) SaveConfigFileResolution(ctx context.Context, request storage.Co
 		return storage.ConfigFileState{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.lockInstallationSettingsTarget(ctx, tx, change.TargetID); err != nil {
+	if err := s.lockInstallationTarget(ctx, tx, change.TargetID); err != nil {
 		return storage.ConfigFileState{}, err
 	}
 	if err := verifyConfigFileChange(ctx, tx, change); err != nil {

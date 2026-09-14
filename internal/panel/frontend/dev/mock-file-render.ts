@@ -1,3 +1,9 @@
+import { parseLocalTimeResolution, type LocalTimeResolution } from '../src/lib/schedule-local-time';
+import {
+  parseScheduleDatePreview,
+  type ScheduleDatePreview,
+  type SchedulePreviewInput,
+} from '../src/lib/schedule-preview';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -42,7 +48,18 @@ export interface GoRenderInput {
   inherited_layers: number;
 }
 
+export interface TimezonePreview {
+  timezone: string;
+  at: string;
+  local_time: string;
+  abbreviation: string;
+  offset_seconds: number;
+}
+
 export interface GoRenderResponse {
+  schedule_preview?: ScheduleDatePreview;
+  timezone_preview?: TimezonePreview;
+  local_time?: LocalTimeResolution;
   valid: boolean;
   final_content: string;
   matches_formatting: boolean;
@@ -61,6 +78,28 @@ export class GoFileRenderer {
   #sequence = 0;
 
   render(input: GoRenderInput): Promise<GoRenderResponse> {
+    return this.#request(input);
+  }
+
+  resolveLocalTime(timezone: string, local_time: string): Promise<GoRenderResponse> {
+    return this.#request({ local_time: { timezone, local_time } });
+  }
+
+  previewTimezone(timezone: string, at: string): Promise<GoRenderResponse> {
+    return this.#request({ timezone_preview: { timezone, at } });
+  }
+
+  previewSchedule(input: SchedulePreviewInput): Promise<GoRenderResponse> {
+    return this.#request({ schedule_preview: input });
+  }
+
+  #request(
+    input:
+      | GoRenderInput
+      | { local_time: { timezone: string; local_time: string } }
+      | { timezone_preview: { timezone: string; at: string } }
+      | { schedule_preview: SchedulePreviewInput },
+  ): Promise<GoRenderResponse> {
     const child = this.#runningProcess();
     const id = `render-${(this.#sequence += 1)}`;
     const message = `${JSON.stringify({ version: VERSION, id, ...input })}\n`;
@@ -144,6 +183,9 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     'effective_policy',
     'provenance',
     'diagnostics',
+    'timezone_preview',
+    'local_time',
+    'schedule_preview',
   ]);
   const inherited = parseFormattingPolicy(record?.inherited_policy);
   const effective = parseFormattingPolicy(record?.effective_policy);
@@ -163,6 +205,15 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     throw new TypeError('the Go development renderer returned an invalid response');
   }
   return {
+    ...(record.local_time === undefined
+      ? {}
+      : { local_time: parseLocalTimeResolution(record.local_time) }),
+    ...(record.schedule_preview === undefined
+      ? {}
+      : { schedule_preview: parseScheduleDatePreview(record.schedule_preview) }),
+    ...(record.timezone_preview === undefined
+      ? {}
+      : { timezone_preview: parseTimezonePreview(record.timezone_preview) }),
     valid: record.valid,
     final_content: record.final_content,
     matches_formatting: record.matches_formatting,
@@ -197,4 +248,32 @@ function exactRecord(value: unknown, allowed: readonly string[]): Record<string,
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   return Object.keys(record).every((key) => allowed.includes(key)) ? record : null;
+}
+
+function parseTimezonePreview(value: unknown): TimezonePreview {
+  const record = exactRecord(value, [
+    'timezone',
+    'at',
+    'local_time',
+    'abbreviation',
+    'offset_seconds',
+  ]);
+  if (
+    record === null ||
+    typeof record.timezone !== 'string' ||
+    typeof record.at !== 'string' ||
+    typeof record.local_time !== 'string' ||
+    typeof record.abbreviation !== 'string' ||
+    typeof record.offset_seconds !== 'number' ||
+    !Number.isInteger(record.offset_seconds)
+  ) {
+    throw new TypeError('the Go development renderer returned an invalid timezone preview');
+  }
+  return {
+    timezone: record.timezone,
+    at: record.at,
+    local_time: record.local_time,
+    abbreviation: record.abbreviation,
+    offset_seconds: record.offset_seconds,
+  };
 }

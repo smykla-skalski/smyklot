@@ -132,12 +132,22 @@ describe('SyncView [Component]', () => {
       readOnly: false,
       drafts,
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
         Promise.resolve(
-          state.status ?? { checked_at: new Date(0).toISOString(), repositories: [] },
+          state.status ?? { latest_observed_at: new Date(0).toISOString(), repositories: [] },
         ),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
@@ -165,7 +175,7 @@ describe('SyncView [Component]', () => {
     );
 
     await screen.findByRole('heading', { name: 'Labels' });
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Enable label sync' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
 
     expect(drafts.dirtyControls().map(({ id }) => id)).toEqual([
@@ -178,8 +188,7 @@ describe('SyncView [Component]', () => {
     expect(drafts.discardScope({ type: 'workspace', targetId: 'target-1' })).toBe(1);
     await waitFor(() =>
       expect(
-        (screen.getByRole('checkbox', { name: 'Resume label syncing' }) as HTMLInputElement)
-          .checked,
+        (screen.getByRole('checkbox', { name: 'Enable label sync' }) as HTMLInputElement).checked,
       ).toBe(false),
     );
     expect(screen.getByRole('button', { name: 'Remove bug' })).toBeTruthy();
@@ -195,9 +204,7 @@ describe('SyncView [Component]', () => {
     );
 
     await screen.findByRole('heading', { name: 'Repository options' });
-    await fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Resume repository option syncing' }),
-    );
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Enable repository option sync' }));
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Wiki' }));
 
     expect(drafts.dirtyControls().map(({ id }) => id)).toEqual([
@@ -292,7 +299,7 @@ describe('SyncView [Component]', () => {
       { drafts: registry(storage) },
     );
     await screen.findByRole('heading', { name: 'Labels' });
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Enable label sync' }));
     first.page.unmount();
 
     const restarted = registry(storage);
@@ -305,14 +312,14 @@ describe('SyncView [Component]', () => {
        the name as well as in the state. */
     await waitFor(() =>
       expect(
-        (screen.getByRole('checkbox', { name: 'Pause label syncing' }) as HTMLInputElement).checked,
+        (screen.getByRole('checkbox', { name: 'Disable label sync' }) as HTMLInputElement).checked,
       ).toBe(true),
     );
   });
 
   function fleet(...repositories: Array<[string, SyncCell['state']]>): SyncStatus {
     return {
-      checked_at: new Date(0).toISOString(),
+      latest_observed_at: new Date(0).toISOString(),
       repositories: repositories.map(([repository, state]) => ({
         repository,
         cells: {
@@ -355,11 +362,21 @@ describe('SyncView [Component]', () => {
 
         return Promise.resolve(config(kind));
       },
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
-        Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
+        Promise.resolve({ latest_observed_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
@@ -393,11 +410,21 @@ describe('SyncView [Component]', () => {
 
         return Promise.resolve(config(kind));
       },
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
-        Promise.resolve({ checked_at: new Date(0).toISOString(), repositories: [] }),
+        Promise.resolve({ latest_observed_at: new Date(0).toISOString(), repositories: [] }),
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: () => {},
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
@@ -453,9 +480,9 @@ describe('SyncView [Component]', () => {
       status: fleet(['one', 'off'], ['two', 'off']),
     });
 
-    await screen.findByRole('heading', { name: 'Sync is paused' });
+    await screen.findByRole('heading', { name: 'Sync disabled' });
     expect(document.querySelector('[aria-label="Repository sync summary"]')?.textContent).toContain(
-      '2 paused',
+      '2 sync disabled',
     );
   });
 
@@ -464,10 +491,10 @@ describe('SyncView [Component]', () => {
       status: fleet(['active', 'in_step'], ['disabled', 'off']),
     });
 
-    await screen.findByRole('heading', { name: 'Sync is paused' });
+    await screen.findByRole('heading', { name: 'Sync disabled' });
     const summary = document.querySelector('[aria-label="Repository sync summary"]');
-    expect(summary?.textContent).toContain('1 up to date');
-    expect(summary?.textContent).toContain('1 paused');
+    expect(summary?.textContent).toContain('1 no pending changes');
+    expect(summary?.textContent).toContain('1 sync disabled');
   });
 
   /**
@@ -482,7 +509,7 @@ describe('SyncView [Component]', () => {
   it('names which silence an empty fleet is, and offers the way out', async () => {
     mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview');
 
-    await screen.findByRole('heading', { name: 'Sync is paused' });
+    await screen.findByRole('heading', { name: 'Sync disabled' });
     expect(screen.getByText('Enable a configuration below to start syncing')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open labels configuration' })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: 'Labels sync' })).toBeTruthy();
@@ -525,7 +552,7 @@ describe('SyncView [Component]', () => {
       expires_at: new Date(now + 6 * 60 * 60_000 + 5 * 60_000).toISOString(),
     };
     const status: SyncStatus = {
-      checked_at: new Date(now - 5 * 60_000).toISOString(),
+      latest_observed_at: new Date(now - 5 * 60_000).toISOString(),
       repositories: [
         {
           repository: 'smyklot',
@@ -546,7 +573,7 @@ describe('SyncView [Component]', () => {
     });
 
     await screen.findByRole('heading', { name: 'An earlier sync needs your decision' });
-    expect(screen.getByText(/Last checked 5 minutes ago/u)).toBeTruthy();
+    expect(screen.getByText(/Latest repository observation 5 minutes ago/u)).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
     const inspector = await screen.findByRole('dialog', { name: 'Sync details' });
     expect(inspector.textContent).toContain('Expires in 6 hours');

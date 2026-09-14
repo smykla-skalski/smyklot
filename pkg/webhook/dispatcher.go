@@ -63,7 +63,7 @@ func (p *Pipeline) decode(work Work) (Delivery, error) {
 	return p.opts.decorate(Delivery{
 		Event: work.Event, ID: work.DeliveryID, Source: source,
 		Payload: work.Payload, Key: work.Key, ClaimID: work.ClaimID,
-		Attempt: work.Attempt, Logger: logger,
+		Attempt: work.Attempt, SourceOrder: work.SourceOrder, Logger: logger,
 	}), nil
 }
 

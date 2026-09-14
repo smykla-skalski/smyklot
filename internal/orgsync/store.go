@@ -75,9 +75,29 @@ func (o *RepositoryOverride) Disabled() bool {
 	return o != nil && o.Enabled != nil && !*o.Enabled
 }
 
-// RepositoryState is what is known about one repository for one kind: what it
-// has already had applied, or why nothing could be.
+// RecheckInterval bounds reuse of a repository observation.
+const RecheckInterval = 6 * time.Hour
+
+// Observation records what was actually established about a repository. A
+// completed file operation can be a proposal, not agreement on the default
+// branch. The empty value is historical evidence whose outcome is unknown.
+type Observation string
+
+const (
+	ObservationMatched   Observation = "matched"
+	ObservationApplied   Observation = "applied"
+	ObservationProposed  Observation = "proposed"
+	ObservationDeclined  Observation = "declined"
+	ObservationDifferent Observation = "different"
+	ObservationFailed    Observation = "failed"
+	ObservationBlocked   Observation = "blocked"
+)
+
+// RepositoryState is what is known about one repository for one kind: what
+// was observed, applied or proposed, or why nothing could be.
 //
+// The digest is a cache key, not proof that the repository matches.
+// A proposal or declined proposal also suppresses repeated work.
 // The applied half is the reason a steady-state reconcile costs nothing. Where
 // the stored digest matches the configured one, the planner does not need to
 // ask GitHub what the repository looks like.
@@ -86,6 +106,14 @@ type RepositoryState struct {
 	Kind          Kind
 	AppliedDigest string
 	AppliedAt     time.Time
+	Observation   Observation
+
+	// ObservedDigest identifies the inputs checked even when no cache entry
+	// can be retained. A changed configuration supersedes earlier failures.
+	ObservedDigest string
+
+	// ProposalURL is the GitHub-provided destination for an observed file proposal.
+	ProposalURL string
 
 	// Problem is why this kind is not being synced here, in words somebody
 	// reading the panel can act on, or empty where nothing is wrong.
@@ -138,12 +166,21 @@ type RepositoryPathScan struct {
 	Partial      bool
 }
 
+// CheckReference fences plan creation to the queue occurrence that computed it.
+type CheckReference struct {
+	QueueID string
+	Attempt int
+}
+
 // PlanCreate records a computed plan and its actions together.
 //
 // One call rather than a plan then its actions, because a plan with no actions
 // yet is a plan another caller can see and approve. The database holds one live
 // plan per installation, and a half-written one would spend that slot.
 type PlanCreate struct {
+	OriginCheck *CheckReference
+	CheckResult *CheckResult
+
 	ID       string
 	TargetID string
 	Trigger  Trigger
@@ -207,10 +244,11 @@ type PlanLease struct {
 
 // ActionOutcome is what became of one action.
 type ActionOutcome struct {
-	ActionID int64
-	State    ActionState
-	Error    string
-	Blocker  Kind
+	ProposalURL string
+	ActionID    int64
+	State       ActionState
+	Error       string
+	Blocker     Kind
 }
 
 // PlanOutcome closes a plan, recording where each repository ended up.
@@ -272,6 +310,10 @@ type AuditEntry struct {
 // the domain says what it needs and the engine supplies it, rather than the
 // domain reaching for a handle.
 type Store interface {
+	RecordSyncCheckResult(context.Context, CheckResultCreate) error
+	// GetSyncCheckResult reads a retained comparison, not worker execution state.
+	GetSyncCheckResult(context.Context, string, string) (CheckDetails, error)
+	ListSyncCheckObservations(context.Context, string, string, int, int) (CheckObservationPage, error)
 	GetSyncConfig(context.Context, string, Kind) (Config, error)
 	ListSyncConfigs(context.Context, string) ([]Config, error)
 
@@ -370,6 +412,9 @@ type Store interface {
 
 	CreateSyncPlan(context.Context, PlanCreate) (Plan, error)
 
+	// ListSyncPlans returns bounded summaries in immutable creation order.
+	ListSyncPlans(context.Context, string, PlanPageRequest) (PlanPage, error)
+
 	// GetSyncPlan reads one plan, scoped to the installation it belongs to.
 	//
 	// The installation is a parameter rather than something to check afterwards,
@@ -378,15 +423,28 @@ type Store interface {
 	// plan is shown to somebody who has rights over another.
 	GetSyncPlan(context.Context, string, string) (Plan, []Action, error)
 
+	// GetSyncPlanSummary reads plan state and counts without loading actions.
+	GetSyncPlanSummary(context.Context, string, string) (Plan, error)
+
 	// GetLiveSyncPlan answers the one plan an installation may have in flight,
-	// or storage.ErrNotFound. It is what makes pressing "sync now" twice
-	// idempotent.
+	// or storage.ErrNotFound. It describes current work. Accepted request
+	// identity comes from receipts and must not be inferred from this plan.
 	//
 	// This package names no storage errors, and deliberately: it does not
 	// import the package that defines them, so the domain stays sayable
 	// without a database. The engine supplies them, exactly as it does for
 	// internal/pendingci.
 	GetLiveSyncPlan(context.Context, string) (Plan, []Action, error)
+
+	// GetSyncCheckAvailability reads current workspace blockers without retiring work.
+	GetSyncCheckAvailability(context.Context, string, time.Time) (CheckAvailability, error)
+
+	// Dispatch acceptance survives queue retention. Callers authorize actor and target.
+	ListSyncRequests(context.Context, RequestHistoryQuery, func() time.Time) (RequestHistoryPage, error)
+	GetSyncRequest(context.Context, RequestLookup, func() time.Time) (RequestAcceptance, error)
+
+	FindSyncPlanDispatch(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)
+	DispatchSyncPlan(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)
 
 	ApproveSyncPlan(context.Context, PlanApproval) (Plan, error)
 	InvalidateSyncPlans(context.Context, string, time.Time) error

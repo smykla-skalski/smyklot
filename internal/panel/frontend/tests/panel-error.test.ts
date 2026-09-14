@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   describeFailure,
+  invitationRecoveryToken,
   readPanelFailure,
   type ErrorContent,
   type PanelFailure,
@@ -138,12 +139,12 @@ describe('what a reader is told', () => {
     expect(action({ status: 401, code: 'sign_in_failed', message: '' })?.kind).toBe('sign-in');
     expect(action({ status: 502, code: 'catalog_unavailable', message: '' })?.kind).toBe('sign-in');
 
-    // An invitation that expired, was answered or names someone else is over. No
-    // button on this page can change any of that, and one that looks like it might
-    // is worse than none.
-    for (const code of ['invitation_expired', 'wrong_identity', 'invalid_invitation']) {
-      const status = code === 'invitation_expired' ? 410 : code === 'wrong_identity' ? 403 : 401;
-      expect(action({ status, code, message: '' }), code).toBeNull();
+    expect(action({ status: 410, code: 'invitation_expired', message: '' })).toBeNull();
+    for (const [status, code] of [
+      [403, 'wrong_identity'],
+      [401, 'invalid_invitation'],
+    ] as const) {
+      expect(action({ status, code, message: '' })?.label).toBe('Go to the panel');
     }
   });
 
@@ -193,5 +194,29 @@ describe('the pages that show it', () => {
     expect(read('ErrorCard.svelte')).toMatch(
       /class="[^"]*\berror-code\b[^"]*"\s+aria-hidden="true"/u,
     );
+  });
+});
+
+describe('invitation recovery context', () => {
+  it('preserves only a token for the wrong-account response', () => {
+    const token = 'a'.repeat(43);
+    const failure = { status: 403, code: 'wrong_identity', message: '', invitation_token: token };
+    expect(readPanelFailure(documentWith(JSON.stringify(failure)))).toEqual(failure);
+    expect(describeFailure(failure).action).toEqual({
+      kind: 'invitation',
+      label: 'Review invitation',
+    });
+    for (const invalid of [
+      'https://example.com',
+      '../invite/other',
+      'a'.repeat(42),
+      'a'.repeat(44),
+    ]) {
+      expect(invitationRecoveryToken({ ...failure, invitation_token: invalid })).toBeNull();
+      expect(describeFailure({ ...failure, invitation_token: invalid }).action?.kind).toBe('panel');
+    }
+    expect(
+      invitationRecoveryToken({ ...failure, status: 401, code: 'invalid_invitation' }),
+    ).toBeNull();
   });
 });

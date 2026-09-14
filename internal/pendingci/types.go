@@ -471,6 +471,7 @@ type Decision struct {
 // operator controls. Implementations own atomic transitions; callers own
 // GitHub observations and presentation.
 type Store interface {
+	CheckSourceRevision(context.Context, SourceRevisionRequest) (SourceRevisionResult, error)
 	ClaimSourceRevision(context.Context, SourceRevisionRequest) (SourceRevisionResult, error)
 	CheckArm(context.Context, ArmRequest) error
 	Arm(context.Context, ArmRequest) (ArmResult, error)

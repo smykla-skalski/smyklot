@@ -114,6 +114,11 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - The bottom account area stays visually quiet and does not add a custom role strip
 - The collapse control sits beside the brand when expanded and straddles the
   sidebar edge when collapsed; it appears only on sidebar hover or focus-within
+- Desktop collapse compacts the whole navigation, so its control says Collapse
+  navigation or Expand navigation. The compact workspace avatar retains a menu
+  chevron and a shared hover/focus label identifying the current scope and Switch
+  workspace action. Workspace and console switching remain keyboard reachable
+  without expanding navigation.
 - Mobile uses a top bar and a navigation drawer preserving desktop page order
 - Selection and `aria-current` identify the displayed page, never a remembered
   workspace page while Search or Inbox is open. Personal pages retain workspace
@@ -163,6 +168,17 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Ordinary dialogs are `560-640px` wide
 - Scrim uses 50-55% black plus restrained background blur
 - Use clear header, scrollable body, and sticky action footer
+- A processed count includes successful, failed and skipped actions. Show their
+  outcome breakdown so progress never implies success. Derive the primary count
+  from the same action records as that breakdown; queue snapshots belong in details
+- After execution starts, collapsed repository groups show their recorded outcome
+  breakdown, including pending work. Planned add/change/remove counts are not an
+  execution result. Group summaries cover the whole repository even when its rows
+  are filtered by category
+- Put the current outcome, blockers, active progress and available action before
+  optional execution diagnostics. Use the shared native disclosure for timing,
+  queue priority and attempt details; keep its controls keyboard accessible.
+  Do not hide a blocker or the action needed to continue inside that disclosure
 - Preserve Escape, outside click, focus trap, and focus restoration
 - Confirm only when dismissal would discard unsaved work. Closing an inspector
   whose draft remains staged needs no confirmation
@@ -307,6 +323,11 @@ a screenshot as light or dark
 ## Settings interaction laws
 
 ### Floating action composer exception
+
+Floating save composers reserve their measured height and bottom inset in page
+padding and native scroll clearance. Update this space when content wraps, and
+release it when the composer leaves. A focused field and an additive picker must
+remain reachable above the bar, including after the final override is added.
 
 A floating composer that requires a decision uses a 2px border in
 `--decision-accent`, an alias of the existing gold `--warning` color used by unsaved
@@ -895,3 +916,73 @@ scroll area. It disappears at the end and when all links fit, including after
 resize or navigation changes. Its horizontal bounds follow the sidebar divider,
 with a soft fade to transparent at both ends instead of a clipped rectangular band.
 It must not leave permanent haze or double the separator above build information.
+
+### Invitation failure recovery
+
+A rejected invitation response must leave an executable recovery path. For a
+wrong GitHub identity, preserve only the server-verified invitation token and
+link to invitation review. Review does not accept or decline; a new response
+still passes OAuth state, invitation signature and identity checks. Explain
+that the reader must switch GitHub accounts before responding again.
+
+If the browser has no verified context, do not reconstruct an invitation from
+callback query parameters. Tell the reader to retrieve the original link from
+the sender's message, ask for a new link if unavailable, and provide a return
+to the panel. Recovery links request a fresh document so server error metadata
+is not retained by client navigation. Never promise that restarting guarantees access.
+
+### Search palette keyboard and accessibility contract
+
+The search field retains focus while arrows select results in rendered order.
+Its active descendant points to the selected option's stable id; clearing the
+results removes that relationship. Scroll the active option into view. Enter
+activates a result only when the search field owns the key event. Preserve
+standard text editing and composition keys.
+
+Recent searches and matched destinations are listbox options. Clear, scope
+expansion and all-results actions remain outside the listbox and are reached
+with Tab, along with Close. Tab does not visit each option. The named modal
+contains focus, and Escape or Close returns it to the invoker. Name result
+groups by category and console so cross-scope navigation is explicit.
+
+## Console landmark ownership
+
+Route wrappers provide layout only. Use an ordinary container for `root-workspace`; do not name it after a heading owned by its child. The application shell owns the single main landmark. Page components may expose a region when it is a useful navigation destination, named by their visible heading. Independent sibling regions need distinct names. Loading and error states must not leave references to absent headings. Verify console landmark uniqueness across route variants when changing page structure.
+
+## Sidebar current destination
+
+A sidebar tree has at most one current destination. Select the most specific visible route row. When contextual workspace rows are present in Operations, select that workspace page and leave the Workspaces catalogue as a normal navigation link. The contextual group heading carries the workspace identity. The current-page ARIA marker, active text colors and moving selection background must all belong to the same row. Verify direct entry, sibling navigation, parent return, both themes and reduced motion.
+
+## Settings history restore confirmation
+
+The selected Before or After state owns the comparison emphasis and an explicit
+text label. Current-state matching is a separate status, never a substitute for
+selection. Final confirmation names only the selected resources and identifies
+the history entry by an absolute timestamp with seconds and time zone. Before
+means immediately before that change; do not invent a timestamp for the prior
+state. Shared checkpoint component tests enforce names, side and time identity.
+
+Runtime duration validation derives from retained draft values, including raw
+invalid text, before Save and while the editor is unmounted. Recovery waits for
+the shared settings query before focusing the invalid input. Reveal its whole
+setting row above the Save composer, including the description and visible
+choice label; a hidden radio input does not describe the visible bounds.
+Correction preserves sibling edits, and discard clears the validation result.
+
+Numeric formatting fields offer a deliberate override action at the inherited
+value. Editing a number back to its original inherited value can undo an edit;
+explicitly choosing to pin that value is a separate action and persists ownership.
+The action names the field and value, clears invalid local text, and preserves
+sibling fields. Inherited chains stay muted; only explicit overrides use amber.
+
+## Editor gutter contrast
+
+Line numbers use `--code-gutter` at full opacity. Keep their contrast at least
+4.5:1 against the rendered editor background in both themes. Subordinate the
+gutter through placement and spacing rather than translucent text. Managed-line
+numbers retain their semantic ink and must meet the same contrast requirement.
+Verify focus, selection and validation states when changing editor surfaces.
+
+Selected code uses the paired `--code-selection-bg` and `--code-selection-ink`
+tokens with an opaque background and at least 4.5:1 text contrast. Apply the
+foreground to every selected syntax span, not only the editor container.

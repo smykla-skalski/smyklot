@@ -52,6 +52,32 @@ describe('ConfigEditor drafts [Component]', () => {
     },
   );
 
+  it('describes rejected command choices on every focused checkbox', async () => {
+    const view = render(ConfigEditor, {
+      patch: { allowed_commands: ['merge', 'approve'] },
+      inherited: CONFIG,
+      scope: 'runtime',
+      idPrefix: 'command-error',
+      section: 'commands',
+      serverProblems: { allowed_commands: 'Command selection was rejected' },
+      onChange: vi.fn(),
+    });
+    const group = screen.getByRole('group', { name: 'Commands it answers' });
+    const choices = within(group).getAllByRole('checkbox');
+    expect(choices.length).toBeGreaterThan(1);
+    for (const choice of choices) {
+      const id = choice.getAttribute('aria-describedby');
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id!)?.textContent).toBe('Command selection was rejected');
+      expect(choice.getAttribute('aria-invalid')).toBe('true');
+    }
+    await view.rerender({ serverProblems: {} });
+    for (const choice of choices) {
+      expect(choice.getAttribute('aria-describedby')).toBeNull();
+      expect(choice.getAttribute('aria-invalid')).toBeNull();
+    }
+  });
+
   it('disables open behavior choices when edit permission is removed', async () => {
     const onChange = vi.fn();
     const view = render(ConfigEditor, {
@@ -120,6 +146,37 @@ describe('ConfigEditor drafts [Component]', () => {
     await fireEvent.click(screen.getByLabelText('Merge draft pull requests'));
 
     expect(onChange).toHaveBeenCalledWith({ allow_draft_merges: true }, 'allow_draft_merges');
+  });
+
+  it('describes both alias inputs alongside local validation', async () => {
+    const { rerender } = render(ConfigEditor, {
+      patch: { command_aliases: { ship: 'merge', lgtm: 'approve' } },
+      inherited: CONFIG,
+      scope: 'runtime',
+      idPrefix: 'errors',
+      section: 'commands',
+      onChange: vi.fn(),
+      serverProblems: { command_aliases: 'Alias map rejected' },
+    });
+    const key = screen.getByLabelText('Alias ship');
+    const value = screen.getByRole('combobox', { name: 'Command for alias ship' });
+    const description = key.getAttribute('aria-describedby')!;
+    expect(document.getElementById(description)?.textContent).toBe('Alias map rejected');
+    expect(value.getAttribute('aria-describedby')).toBe(description);
+    await fireEvent.input(key, { target: { value: 'lgtm' } });
+    await fireEvent.blur(key);
+    expect(key.getAttribute('aria-invalid')).toBe('true');
+    const descriptions = key.getAttribute('aria-describedby')!.split(' ');
+    expect(descriptions).toHaveLength(2);
+    expect(descriptions.map((id) => document.getElementById(id)?.textContent)).toEqual([
+      'Alias map rejected',
+      'That alias already exists',
+    ]);
+    await rerender({ serverProblems: {} });
+    expect(value.getAttribute('aria-describedby')).toBeNull();
+    expect(key.getAttribute('aria-describedby') ?? '').not.toContain(description);
+    expect((key as HTMLInputElement).value).toBe('lgtm');
+    expect(key.getAttribute('aria-invalid')).toBe('true');
   });
 
   function aliases() {

@@ -9,7 +9,7 @@
   const section = $derived(params.section);
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <RootAccess
     {section}
     fetchUsers={session.api.fetchRootUsers}
@@ -25,4 +25,4 @@
     suggestUsers={session.api.suggestRootTargetUsers}
     onOpenWorkspaceAccess={(account: string) => session.selectRootWorkspace(account, 'users')}
   />
-</section>
+</div>

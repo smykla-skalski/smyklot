@@ -4,6 +4,7 @@
   import { useDebounce } from 'runed';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
+  import { queueRepositoryName, queueProfileName } from '#lib/queue-names.js';
   import { sentenceCase } from '#lib/format.js';
   import { LiveList } from '#lib/live-list.svelte.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
@@ -25,7 +26,7 @@
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import QueueActionDialog from './QueueActionDialog.svelte';
-  import QueueDetailDialog from './QueueDetailDialog.svelte';
+  import QueueInspector from './QueueInspector.svelte';
   import QueueList from './QueueList.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -38,6 +39,7 @@
     canControl = false,
     section = 'active',
     planHref,
+    syncResultHref,
     onOpenPlan,
     onSelectSection,
   }: {
@@ -53,6 +55,7 @@
      * address to send anybody to.
      */
     planHref?: string;
+    syncResultHref?: (id: string) => string;
     onOpenPlan?: (event: MouseEvent) => void;
     /**
      * Which of the queue's five views to show. Each is still its own address - the
@@ -152,12 +155,6 @@
     queryFn: () => fetchQueue(doneAsk),
     enabled: shows('done'),
   }));
-  const detailQuery = createQuery(() => ({
-    queryKey: queueDetailKey(targetId, detailItemID ?? ''),
-    queryFn: () => fetchDetail(detailItemID),
-    enabled: detailOpen && detailItemID !== null,
-  }));
-
   const cardQueries = { decision: decisionQuery, live: liveQuery, done: doneQuery };
   /* The facets belong to the whole page rather than to one card, so they are read off
      whichever card the view leads with - the same filter answers for all of them. */
@@ -236,14 +233,15 @@
       .map((card) => errorMessage(cardQueries[card.id].error))
       .find((message) => message !== '') ?? '',
   );
-  const detail = $derived<QueueDetail | null>(detailQuery.data ?? null);
-  const detailLoading = $derived(detailQuery.isFetching);
-  const detailError = $derived(errorMessage(detailQuery.error));
 
   const workloads = $derived(facets.workloads);
   const profiles = $derived(facets.profiles);
   const workspaces = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
+  const namesUnavailable = $derived(
+    repositories.some((id) => !facets.repository_names?.[id]?.trim()) ||
+      profiles.some((id) => id !== 'immediate' && !facets.profile_names?.[id]?.trim()),
+  );
 
   /* The queue speaks in target ids - the rows carry one and the facets are a list of
      them - and nobody reading the console knows a workspace by its id. The catalog is
@@ -386,7 +384,10 @@
         {
           options: [
             { value: 'all', label: 'All hours' },
-            ...profiles.map((value) => ({ value, label: value })),
+            ...profiles.map((value) => ({
+              value,
+              label: queueProfileName(value, facets.profile_names?.[value]),
+            })),
           ],
         },
       ],
@@ -426,7 +427,13 @@
         {
           options: [
             { value: 'all', label: 'All repositories' },
-            ...repositories.map((value) => ({ value, label: value })),
+            ...repositories.map((value) => ({
+              value,
+              label: queueRepositoryName({
+                repository_id: value,
+                repository_name: facets.repository_names?.[value],
+              })!,
+            })),
           ],
         },
       ],
@@ -679,9 +686,9 @@
   function actionReceipt(action: QueueActionType, title: string): string {
     switch (action) {
       case 'run_now':
-        return `Running now - ${title}`;
+        return `Ready when worker capacity is available - ${title}`;
       case 'next_window':
-        return `${title} runs in its next hours`;
+        return `${title} will wait for allowed hours and worker capacity`;
       case 'schedule_at':
         return `${title} is scheduled`;
       case 'set_priority':
@@ -819,6 +826,22 @@ without the buttons, rather than buttons that refuse.
   </div>
 
   <p class="visually-hidden" aria-live="polite">{announcement}</p>
+  {#if namesUnavailable}
+    <Plate label="Some queue names are unavailable">
+      <p role="status">
+        IDs identify repositories or hours profiles whose names could not be loaded. Retry to check
+        again. Deleted records keep their IDs.
+      </p>
+      <Button
+        aria-disabled={updating}
+        onclick={() => {
+          if (!updating) void load();
+        }}
+      >
+        {updating ? 'Retrying names…' : 'Retry names'}
+      </Button>
+    </Plate>
+  {/if}
   <!-- Its own region, because the word beside the button is drawn with `visibility` and a
        hidden node is not in the accessibility tree to be announced from. -->
   <p class="visually-hidden" aria-live="polite">{updating ? 'Updating…' : ''}</p>
@@ -859,15 +882,18 @@ without the buttons, rather than buttons that refuse.
     error={actionError}
     onClose={closeAction}
     onPreview={previewAction}
+    onResolveTime={api.resolveScheduleLocalTime}
     onSubmit={(input) => void submitAction(input)}
   />
 {/key}
 
-<QueueDetailDialog
-  open={detailOpen}
-  {detail}
-  loading={detailLoading}
-  error={detailError}
+<QueueInspector
+  checkEvidenceApi={api}
+  {syncResultHref}
+  recoveryApi={api}
+  itemId={detailOpen ? detailItemID : null}
+  {targetId}
+  fetchItem={fetchDetail}
   onClose={closeDetail}
 />
 

@@ -140,3 +140,18 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     ...over,
   } as Partial<PanelApi>);
 }
+
+/** Fixed summer examples for interactive schedule stories, independent of the host timezone. */
+export const previewScheduleTimezoneFixture: PanelApi['previewScheduleTimezone'] = async (
+  timezone,
+) => {
+  if (timezone !== 'UTC' && timezone !== 'Europe/Warsaw')
+    throw new PanelApiError(400, 'invalid_timezone', 'Choose UTC or Europe/Warsaw in this example');
+  return {
+    timezone,
+    at: '2026-07-01T12:00:00Z',
+    local_time: timezone === 'UTC' ? '2026-07-01T12:00:00Z' : '2026-07-01T14:00:00+02:00',
+    abbreviation: timezone === 'UTC' ? 'UTC' : 'CEST',
+    offset_seconds: timezone === 'UTC' ? 0 : 7200,
+  };
+};

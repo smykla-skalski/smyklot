@@ -40,7 +40,7 @@ func declareConfigFileNotificationSpecs(runtime queueRuntime) {
 		count, err = store.DispatchConfigFileNotifications(ctx, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(count).To(BeZero(), "a running check cannot consume a newer notification")
-		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, now)
+		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt}, now)
 		Expect(err).NotTo(HaveOccurred())
 		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
 			Kinds:  []workqueue.Kind{workqueue.KindConfigFileSync},
@@ -200,7 +200,7 @@ func finishNotifiedConfigFiles(ctx context.Context, store storage.Store, now tim
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.Kind).To(Equal(workqueue.KindConfigFileSync))
-		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, now)
+		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt}, now)
 		Expect(err).NotTo(HaveOccurred())
 	}
 }

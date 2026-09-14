@@ -153,7 +153,7 @@ ORDER BY o.repository_id, o.kind`, targetID)
 // drift from scanSyncRepositoryState. Aliased, because both go through the
 // repositories join that scopes them to an installation.
 const syncStateColumns = `
-    s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem`
+    s.repository_id, s.kind, s.applied_digest, s.applied_at, s.problem, s.observation, s.observed_digest, s.proposal_url`
 
 // ListSyncRepositoryState reads what is known about each repository: what it
 // has already had applied, or why nothing could be.
@@ -208,7 +208,7 @@ func scanSyncRepositoryState(scanner rowScanner) (orgsync.RepositoryState, error
 		applied StoredTime
 	)
 	if err := scanner.Scan(
-		&state.RepositoryID, &state.Kind, &state.AppliedDigest, &applied, &state.Problem,
+		&state.RepositoryID, &state.Kind, &state.AppliedDigest, &applied, &state.Problem, &state.Observation, &state.ObservedDigest, &state.ProposalURL,
 	); err != nil {
 		return orgsync.RepositoryState{}, fmt.Errorf("scan sync repository state: %w", err)
 	}

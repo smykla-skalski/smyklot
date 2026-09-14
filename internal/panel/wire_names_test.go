@@ -32,6 +32,7 @@ func TestPanelResponsesUseWireNames(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seedPanelWireNameRows(t, harness)
+	createPanelSyncPlan(t, harness, "sync-plan-1", harness.now.Add(time.Hour))
 	harness.server.configFiles = &configFileControllerProbe{}
 
 	paths := panelWireNameProbePaths()
@@ -135,7 +136,7 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	profileID := workqueue.AlwaysOpenProfileID
 	if _, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
 		ID: "wire-name-queue", Kind: workqueue.KindPathRefresh,
-		Lane: workqueue.LaneMaintenance, TargetID: &targetID,
+		Lane: workqueue.LaneMaintenance, TargetID: &targetID, RepositoryID: new(repository),
 		Title: "Refresh which paths are watched", State: workqueue.StateReady,
 		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
 		ProfileID: &profileID, NotBefore: harness.now,
@@ -172,6 +173,9 @@ func panelWireNameProbePaths() []string {
 
 	return []string{
 		"/panel/api/v1/session",
+		"/panel/api/v1/installation",
+		"/panel/api/v1/schedule-timezone?timezone=UTC&at=2026-01-01T00:00:00Z",
+		"/panel/api/v1/schedule-local-time?timezone=Europe/Warsaw&local_time=2026-10-25T02:30",
 		"/panel/api/v1/notifications",
 		"/panel/api/v1/invites/" + token,
 		"/panel/api/v1/targets",
@@ -193,6 +197,12 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/sync/config/labels",
 		"/panel/api/v1/targets/" + target + "/sync/paths",
 		"/panel/api/v1/targets/" + target + "/sync/plan",
+		"/panel/api/v1/targets/" + target + "/sync/plans",
+		"/panel/api/v1/targets/" + target + "/sync/requests",
+		"/panel/api/v1/targets/" + target + "/sync/requests/check/7",
+		"/panel/api/v1/targets/" + target + "/sync/checks/check-1",
+		"/panel/api/v1/targets/" + target + "/sync/checks/check-1/observations",
+		"/panel/api/v1/targets/" + target + "/sync/plans/sync-plan-1",
 		"/panel/api/v1/targets/" + target + "/sync/status",
 		"/panel/api/v1/targets/" + target + "/sync/files/context",
 		"/panel/api/v1/targets/" + target + "/audit",
@@ -267,6 +277,17 @@ func assertWireNames(t *testing.T, where string, value any) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, nested := range typed {
+			// These two string dictionaries use durable IDs as keys, not
+			// response field names. Keep the exception at the exact facet
+			// boundary and reject objects masquerading as display names.
+			if strings.HasSuffix(where, "/queue.facets.repository_names") ||
+				strings.HasSuffix(where, "/queue.facets.profile_names") {
+				if _, ok := nested.(string); !ok {
+					t.Errorf("%s[%q]: display name must be a string, got %T", where, key, nested)
+				}
+
+				continue
+			}
 			if !wireName.MatchString(key) {
 				t.Errorf(
 					"%s: %q is not a wire name - a Go struct is going out untagged, and the "+
@@ -293,7 +314,8 @@ func TestPanelWireNameProbesCoverEveryReadableRoute(t *testing.T) {
 
 	probed := map[string]bool{}
 	for _, path := range panelWireNameProbePaths() {
-		probed[path] = true
+		route, _, _ := strings.Cut(path, "?")
+		probed[route] = true
 	}
 
 	for _, match := range pattern.FindAllStringSubmatch(source, -1) {

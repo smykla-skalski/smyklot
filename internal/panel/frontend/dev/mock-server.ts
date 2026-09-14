@@ -1,3 +1,28 @@
+import { recordMockQueueEvent } from './queue-events.js';
+import { pruneMockOccurrences, scheduleMockOccurrence } from './queue-occurrences';
+import { mockQueueActions, projectMockQueueItem } from './queue-capabilities';
+import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
+import { scheduleHoursProblems } from '../src/lib/schedule-validation';
+import {
+  parseRuntimeBehavior,
+  RuntimeBehaviorValidationError,
+  resolveRuntimeBehavior,
+  type RuntimeBehaviorIntent,
+} from '../src/lib/runtime-behavior';
+import { mockSyncOperation } from './sync-operation.js';
+import { mockSyncRequests } from './sync-request-history.js';
+import { mockCheckCapability, projectMockSyncPlan } from './sync-capability.js';
+import { mockSyncCheckPage } from './sync-check-history';
+import { mockSyncCheck } from './sync-check.js';
+import { advanceMockSync } from './sync-execution.js';
+import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
+import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
+import {
+  mockRecoverDelivery,
+  mockRecoveryPreview,
+  mockRecoveryOperation,
+} from './delivery-recovery';
+import type { DeliveryRecoveryRequest } from '../src/lib/delivery-recovery';
 import { mockConfigFilePreview } from './config-file-review.js';
 import type { ConfigFileChoiceSide } from '../src/lib/config-file-sync.js';
 import {
@@ -10,6 +35,7 @@ import { observedRepositoryFileStatus } from './repository-files.js';
 import { mockBypassActorSuggestions } from './bypass-actors.ts';
 import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
 import { preserveNumberToken } from '../src/lib/merge.js';
+import { DuplicateRequestFieldError, parseRequestJSON } from './request-json.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -40,7 +66,6 @@ import type {
   PendingCIDetail,
   PendingCIRequest,
   QueueActionInput,
-  QueueDetail,
   QueueItem,
   QueuePage,
   QueueSchedulePreview,
@@ -99,7 +124,6 @@ import {
   formattingSources,
   defaultFormattingPolicy,
   parseFormattingPatch,
-  parseFormattingPolicy,
   type FormattingPatch,
 } from '../src/lib/formatting.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
@@ -175,6 +199,7 @@ type ShellSource = () => Promise<string>;
    with the built shell. Both are typed against `node:`, which is exactly why they are
    here and not in `fixtures.ts`. */
 interface MockState extends Fixtures {
+  installationState?: 'unavailable' | 'error';
   streams: Set<Duplex>;
   shell: ShellSource;
   scheduleProfiles: ScheduleProfile[];
@@ -733,7 +758,14 @@ function install(httpServer: DevHttpServer | null | undefined, middlewares: Conn
  * measuring a table cannot have the table re-sort itself half way through the measurement.
  */
 function runReconciler(state: MockState): void {
-  if (process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN === '1') return;
+  if (process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN === '1') {
+    if (process.env.SMYKLOT_PANEL_DEV_MOCK_SYNC_LIVE === '1') {
+      setInterval(() => {
+        if (advanceMockSync(state, Date.now())) broadcast(state, { type: 'resync' });
+      }, 1_000).unref();
+    }
+    return;
+  }
   setInterval(() => reconcile(state), 1_000).unref();
 }
 
@@ -758,40 +790,18 @@ function reconcile(state: MockState): void {
   }
 
   if (advanceQueue(state, now)) changed = true;
+  if (advanceMockSync(state, now)) changed = true;
 
   if (changed) broadcast(state, { type: 'resync' });
 }
 
-/**
- * One row's loop: it waits, it runs, it rests, it waits again.
- *
- * Proportioned so a reader watching the overview sees both marks: a row spends a third
- * of its cycle running, and the rows are held apart in phase, so the column almost
- * always carries one of each.
- */
+/** Accelerated development cadence; every completed occurrence keeps its identity. */
 const QUEUE_WAIT_MS = 45_000;
 const QUEUE_RUN_MS = 30_000;
-const QUEUE_REST_MS = 10_000;
 
 const QUEUE_DONE = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
 
-/**
- * The queue's rows, walked the way the pending-CI table's already are.
- *
- * The seeds carried the variety - one row running, one waiting on required checks, one
- * retrying after a rate limit - and nothing moved them, so every estimate in them was
- * stamped once at startup and went stale within the hour. A dev server left open for an
- * afternoon showed three rows all reading "now", which is not one of the states the
- * fixture describes and is not a state the service can be in either.
- *
- * So each row runs its own loop: a waiting row whose estimate passes starts, a running
- * row fills its progress and finishes, and a finished row rests and then waits again with
- * a fresh estimate. The resting shape comes off `queueRest`, so a row goes back to being
- * blocked on the thing it was blocked on rather than to a guess.
- *
- * Rows that are somebody's decision rather than the service's - `awaiting_approval` -
- * stand still, because nothing but a person moves them.
- */
+/** Advance live work and publish separate successors for completed recurring work. */
 function advanceQueue(state: MockState, now: number): boolean {
   let changed = false;
 
@@ -800,14 +810,25 @@ function advanceQueue(state: MockState, now: number): boolean {
      after - every row's cycle is the same length. */
   const looping = state.queue.filter((item) => state.queueRest.has(item.id));
 
-  for (const [index, item] of state.queue.entries()) {
+  for (const [index, item] of [...state.queue].entries()) {
+    if (item.kind === 'sync_apply' || item.kind === 'sync_scan') continue;
+    if (scheduleMockOccurrence(state, item, now, QUEUE_WAIT_MS)) changed = true;
     const next = advanceQueueItem(state, item, now, looping.indexOf(item), looping.length);
     if (next === item) continue;
+    if (next.state !== item.state) {
+      recordMockQueueEvent(
+        state,
+        next,
+        next.state === 'running' ? 'started' : next.state,
+        `${next.title}: ${next.state}`,
+        next.state === 'running' ? next.started_at! : (next.finished_at ?? next.updated_at),
+      );
+    }
     state.queue[index] = next;
     changed = true;
   }
 
-  return changed;
+  return pruneMockOccurrences(state) || changed;
 }
 
 function advanceQueueItem(
@@ -821,38 +842,7 @@ function advanceQueueItem(
   const rest = state.queueRest.get(item.id);
   if (item.state === 'awaiting_approval' || rest === undefined) return item;
 
-  if (QUEUE_DONE.has(item.state)) {
-    /* Only what this process watched SUCCEED, and only the loop's own doing. The seeded
-       terminal rows are the past that Recent exists to show, and a past that arms itself
-       again is not a past - that is the rule the pending-CI table follows. The state is
-       checked as well as the id, because a row somebody cancelled is also terminal and
-       also in the loop: without it the mock put a cancelled row back ten seconds later,
-       which is the mock overruling the person using it. */
-    if (item.state !== 'succeeded' || !state.queueLoop.has(item.id)) return item;
-    const finished = Date.parse(item.finished_at ?? item.updated_at);
-    if (Number.isNaN(finished) || now - finished < QUEUE_REST_MS) return item;
-
-    /* A row rests as a WAITING row, whatever it was seeded as. `queue-sync-apply` is
-       seeded mid-run, because that is the picture the fixture is drawing; putting that
-       shape back would hand it a start time from before the process began and finish it
-       again on the next tick, so it would flap between running and done and never be
-       seen waiting. */
-    const waiting: QueueItem = { ...rest };
-    delete waiting.started_at;
-    delete waiting.finished_at;
-
-    return {
-      ...waiting,
-      state: rest.state === 'running' || QUEUE_DONE.has(rest.state) ? 'scheduled' : rest.state,
-      ...(rest.progress_total === undefined ? {} : { progress_current: 0 }),
-      not_before: at(0),
-      eligible_at: at(QUEUE_WAIT_MS),
-      estimated_start_at: at(QUEUE_WAIT_MS),
-      created_at: at(0),
-      updated_at: at(0),
-      revision: item.revision + 1,
-    };
-  }
+  if (QUEUE_DONE.has(item.state)) return item;
 
   if (item.state === 'running') {
     const started = Date.parse(item.started_at ?? item.updated_at);
@@ -1277,7 +1267,9 @@ async function handle(
   const method = req.method ?? 'GET';
 
   if (path === '/' && method === 'GET') {
-    applyScenario(state, parsed.searchParams.get('scenario'));
+    // Background shell/cache reads must not erase a chosen visual scenario.
+    if (req.headers['sec-fetch-dest'] !== 'empty' || parsed.searchParams.has('scenario'))
+      applyScenario(state, parsed.searchParams.get('scenario'));
     next();
     return;
   }
@@ -1296,6 +1288,11 @@ async function handle(
       Number(preview.groups?.status),
       preview.groups?.code ?? '',
       parsed.searchParams.get('message') ?? 'a mock error, for looking at',
+      preview.groups?.status === '403' &&
+        preview.groups?.code === 'wrong_identity' &&
+        parsed.searchParams.get('recover') === '1'
+        ? state.invitations.find((invitation) => invitation.status === 'pending')?.token
+        : undefined,
     );
     return;
   }
@@ -1565,6 +1562,61 @@ async function handle(
       );
       return;
     }
+    if (path === route('/api/v1/installation') && method === 'GET') {
+      if (state.installationState === 'error')
+        throw new MockApiError(
+          503,
+          'installation_lookup_failed',
+          'Could not load the installation link. Try again.',
+        );
+      respond(res, 200, {
+        installation_url:
+          state.installationState === 'unavailable'
+            ? null
+            : 'https://github.com/apps/smyklot/installations/new',
+      });
+      return;
+    }
+    if (path === route('/api/v1/schedule-preview') && method === 'POST') {
+      const preview = await state.fileRenderer.previewSchedule(
+        await readBody<SchedulePreviewInput>(req),
+      );
+      if (!preview.valid) {
+        const problem = preview.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (preview.schedule_preview === undefined)
+        throw new Error('Missing authoritative schedule preview');
+      respond(res, 200, preview.schedule_preview);
+      return;
+    }
+    if (path === route('/api/v1/schedule-local-time') && method === 'GET') {
+      const result = await state.fileRenderer.resolveLocalTime(
+        parsed.searchParams.get('timezone') ?? '',
+        parsed.searchParams.get('local_time') ?? '',
+      );
+      if (!result.valid) {
+        const problem = result.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (!result.local_time) throw new Error('Missing authoritative local time resolution');
+      respond(res, 200, result.local_time);
+      return;
+    }
+    if (path === route('/api/v1/schedule-timezone') && method === 'GET') {
+      const preview = await state.fileRenderer.previewTimezone(
+        parsed.searchParams.get('timezone') ?? '',
+        parsed.searchParams.get('at') ?? '',
+      );
+      if (!preview.valid) {
+        const problem = preview.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (preview.timezone_preview === undefined)
+        throw new Error('Missing authoritative timezone preview');
+      respond(res, 200, preview.timezone_preview);
+      return;
+    }
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,
@@ -1655,12 +1707,131 @@ async function handle(
       }
     }
 
+    const operationMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/requests\/([^/]+)\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (operationMatch && method === 'GET') {
+      const reply = mockSyncOperation(
+        state,
+        decodeURIComponent(operationMatch[1] ?? ''),
+        decodeURIComponent(operationMatch[2] ?? ''),
+        decodeURIComponent(operationMatch[3] ?? ''),
+        parsed.searchParams,
+      );
+      respond(res, reply.status, reply.body);
+      return;
+    }
+
+    const requestsMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/requests$/.exec(
+      path.slice(route('').length),
+    );
+    if (requestsMatch && method === 'GET') {
+      const target = findTarget(state, requestsMatch[1] ?? '');
+      const reply = mockSyncRequests(state, target.value.id, parsed.searchParams);
+      respond(res, reply.status, reply.body);
+      return;
+    }
+
+    const checkMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/checks\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (checkMatch && method === 'GET') {
+      const reply = mockSyncCheck(
+        state,
+        decodeURIComponent(checkMatch[1] ?? ''),
+        decodeURIComponent(checkMatch[2] ?? ''),
+      );
+      respond(res, reply.status, reply.body);
+      return;
+    }
+
+    const checkEvidenceMatch =
+      /^\/api\/v1\/targets\/([^/]+)\/sync\/checks\/([^/]+)\/observations$/.exec(
+        path.slice(route('').length),
+      );
+    if (checkEvidenceMatch && method === 'GET') {
+      const target = findTarget(state, checkEvidenceMatch[1] ?? '');
+      const reply = mockSyncCheckPage(
+        state,
+        target.value.id,
+        decodeURIComponent(checkEvidenceMatch[2] ?? ''),
+        parsed.searchParams,
+      );
+      respond(res, reply.status, reply.body);
+      return;
+    }
+
+    const historyMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans$/.exec(
+      path.slice(route('').length),
+    );
+    if (historyMatch && method === 'GET') {
+      const targetId = decodeURIComponent(historyMatch[1] ?? '');
+      const limit = Number(parsed.searchParams.get('limit') ?? 20);
+      respond(
+        res,
+        200,
+        mockSyncHistoryPage(
+          mockSyncHistory(state, targetId),
+          limit,
+          parsed.searchParams.get('cursor'),
+        ),
+      );
+      return;
+    }
+
+    const retainedPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (retainedPlanMatch && method === 'GET') {
+      const plan = mockSyncHistory(state, decodeURIComponent(retainedPlanMatch[1] ?? '')).find(
+        (entry) => entry.id === decodeURIComponent(retainedPlanMatch[2] ?? ''),
+      );
+      if (plan?.id !== decodeURIComponent(retainedPlanMatch[2] ?? ''))
+        respond(res, 404, { error: { code: 'not_found', message: 'Sync result not found' } });
+      else
+        respond(res, 200, {
+          plan,
+          check: mockCheckCapability(state, decodeURIComponent(retainedPlanMatch[1] ?? '')),
+        });
+      return;
+    }
+
+    const syncRunNowMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/run-now$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncRunNowMatch && method === 'POST') {
+      const target = findTarget(state, syncRunNowMatch[1] ?? '');
+      if (!['owner', 'admin'].includes(target.value.effective_role)) {
+        throw new MockApiError(403, 'forbidden', 'Admin or Owner access is required');
+      }
+      const result = mockSyncRunNow(
+        state,
+        target.value.id,
+        await readBody<unknown>(req),
+        Date.now(),
+      );
+      if (result.status === 409 && result.body.dispatch) {
+        respond(res, result.status, result.body);
+        return;
+      }
+      if (result.status === 400 || result.status === 404 || result.status === 409) {
+        throw new MockApiError(result.status, result.body.code, result.body.message);
+      }
+      respond(res, result.status, result.body);
+      if (result.status === 202)
+        broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      return;
+    }
+
     const syncPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plan$/.exec(
       path.slice(route('').length),
     );
     if (syncPlanMatch && method === 'GET') {
       const targetId = decodeURIComponent(syncPlanMatch[1] ?? '');
-      respond(res, 200, { plan: state.syncPlans.get(targetId) ?? null });
+      respond(res, 200, {
+        plan: mockLiveSyncPlan(state, targetId),
+        check: mockCheckCapability(state, targetId),
+      });
       return;
     }
 
@@ -1675,7 +1846,7 @@ async function handle(
         res,
         200,
         state.syncStatus.get(targetId) ?? {
-          checked_at: new Date().toISOString(),
+          latest_observed_at: null,
           repositories: [],
         },
       );
@@ -1790,7 +1961,17 @@ async function handle(
         approved_at: new Date().toISOString(),
       };
       state.syncPlans.set(targetId, approved);
-      respond(res, 200, { plan: approved });
+      const queue = state.queue.find(
+        (item) =>
+          item.source_id === approved.id &&
+          item.target_id === targetId &&
+          item.kind === 'sync_apply',
+      );
+      if (queue) {
+        queue.state = Date.parse(queue.eligible_at) > Date.now() ? 'scheduled' : 'ready';
+        queue.revision++;
+      }
+      respond(res, 200, { plan: projectMockSyncPlan(state, targetId, approved) });
       return;
     }
 
@@ -1804,8 +1985,14 @@ async function handle(
       if (!plan || plan.id !== planId) {
         throw new MockApiError(404, 'not_found', 'there is no such plan to discard');
       }
+      state.syncHistory.set(targetId, [
+        ...(state.syncHistory.get(targetId) ?? []),
+        { ...plan, state: 'discarded', finished_at: new Date().toISOString() },
+      ]);
       state.syncPlans.delete(targetId);
-      respond(res, 200, { plan: { ...plan, state: 'discarded' } });
+      respond(res, 200, {
+        plan: projectMockSyncPlan(state, targetId, { ...plan, state: 'discarded' }),
+      });
       return;
     }
 
@@ -1829,6 +2016,27 @@ async function handle(
     }
     if (path === route('/api/v1/root/performance') && method === 'GET') {
       respond(res, 200, mockPerformance(Number(parsed.searchParams.get('window') ?? '24')));
+      return;
+    }
+    const deliveryRecovery = path.match(
+      /^\/api\/v1\/(?:root\/workspaces|targets)\/(?<target>[^/]+)\/deliveries\/(?<delivery>[^/]+)\/recovery$/,
+    );
+    if (deliveryRecovery && (method === 'GET' || method === 'POST')) {
+      const target = findTarget(state, deliveryRecovery.groups?.target ?? '');
+      const delivery = decodeURIComponent(deliveryRecovery.groups?.delivery ?? '');
+      if (method === 'GET')
+        respond(res, 200, mockRecoveryPreview(state.queue, target.value.id, delivery));
+      else {
+        const result = mockRecoverDelivery(
+          state.queue,
+          target.value.id,
+          delivery,
+          await readBody<DeliveryRecoveryRequest>(req),
+        );
+        respond(res, result.status, result.body);
+        if (result.status === 202)
+          broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      }
       return;
     }
     if (path === route('/api/v1/root/queue') && method === 'GET') {
@@ -1858,7 +2066,11 @@ async function handle(
         ? findTarget(state, targetQueueDetail.groups?.target ?? '')
         : undefined;
       const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
-      respond(res, 200, mockQueueDetail(item));
+      respond(res, 200, {
+        item: structuredClone(projectMockQueueItem(item)),
+        events: structuredClone(state.queueEvents.get(item.id) ?? []),
+        delivery: mockRecoveryOperation(state.queue, item),
+      });
       return;
     }
     const rootQueuePreview = path.match(
@@ -1893,6 +2105,13 @@ async function handle(
         input,
         target?.value.id,
       );
+      recordMockQueueEvent(
+        state,
+        item,
+        input.type,
+        input.reason ?? `Requested ${input.type}`,
+        item.updated_at,
+      );
       broadcast(state, { type: 'queue.changed', target_id: item.target_id ?? '' });
       respond(res, 200, item);
       return;
@@ -1909,7 +2128,7 @@ async function handle(
     }
     if (path === route('/api/v1/root/schedule-profiles') && method === 'POST') {
       const input = await readBody<ScheduleProfileInput>(req);
-      const profile = saveMockScheduleProfile(state, input);
+      const profile = await saveMockScheduleProfile(state, input);
       broadcast(state, { type: 'queue.changed' });
       respond(res, 201, profile);
       return;
@@ -1919,7 +2138,7 @@ async function handle(
     );
     if (rootScheduleProfile && method === 'PUT') {
       const input = await readBody<ScheduleProfileInput>(req);
-      const profile = saveMockScheduleProfile(
+      const profile = await saveMockScheduleProfile(
         state,
         input,
         rootScheduleProfile.groups?.profile ?? '',
@@ -2046,7 +2265,7 @@ async function handle(
       if (input.approve) {
         let profileID = request.profile_id;
         if (request.custom_profile !== undefined) {
-          const promoted = saveMockScheduleProfile(state, {
+          const promoted = await saveMockScheduleProfile(state, {
             name: request.custom_profile.name,
             timezone: request.custom_profile.timezone,
             windows: request.custom_profile.windows,
@@ -2117,6 +2336,8 @@ async function handle(
     if (targetScheduleRequests && method === 'POST') {
       const target = findTarget(state, targetScheduleRequests.groups?.target ?? '');
       const input = await readBody<ScheduleRequestInput>(req);
+      if (input.custom_profile !== undefined)
+        await validateMockScheduleHours(state, input.custom_profile);
       const effective = targetSchedulePolicies(state, target.value.id).effective.find(
         (policy) => policy.kind === input.kind,
       );
@@ -2181,7 +2402,7 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/root/runtime/settings') && method === 'PUT') {
-      const input = await readBody<RootRuntimeSettingsInput>(req);
+      const input = await readBody<RootRuntimeSettingsInput>(req, ['bot_config']);
       respond(res, 200, saveMockRootRuntimeSettings(state, input));
       return;
     }
@@ -3012,7 +3233,15 @@ function applyScenario(state: MockState, scenario: string | null): void {
      a way of looking at the mock and not a change to it. Emptying it stuck: every
      later request in the same process saw an account with no workspaces, and
      whatever was being looked at next quietly measured the wrong panel. */
-  state.hideTargets = scenario === 'empty';
+  state.hideTargets = ['empty', 'installation-unavailable', 'installation-error'].includes(
+    scenario ?? '',
+  );
+  state.installationState =
+    scenario === 'installation-unavailable'
+      ? 'unavailable'
+      : scenario === 'installation-error'
+        ? 'error'
+        : undefined;
 }
 
 function findTarget(state: MockState, encodedId: string): MockTarget {
@@ -3397,6 +3626,63 @@ function applyMockWorkspaceSettingsPlan(
   }
   if (plan.target?.changed === true || plan.repositories.some(({ changed }) => changed)) {
     recomputeTarget(target);
+  }
+  invalidateMockSyncObservations(state, target, plan);
+}
+
+/** Saving policy changes cannot manufacture a new observation of GitHub. */
+function invalidateMockSyncObservations(
+  state: MockState,
+  target: MockTarget,
+  plan: MockWorkspaceSettingsPlan,
+): void {
+  const status = state.syncStatus.get(target.value.id);
+  if (status === undefined) return;
+  const workspaceFormattingChanged =
+    plan.target?.changed === true &&
+    JSON.stringify(plan.target.before?.config_patch.formatting) !==
+      JSON.stringify(plan.target.next.config_patch.formatting);
+  for (const row of status.repositories) {
+    const repository = target.repositories.find(
+      (entry) => entry.detail.repository.name === row.repository,
+    );
+    if (repository === undefined) continue;
+    const repositoryId = repository.detail.repository.id;
+    const changedRepository = plan.repositories.find(
+      (entry) => entry.changed && entry.next.repository.id === repositoryId,
+    );
+    const repositoryFormattingChanged =
+      changedRepository !== undefined &&
+      (JSON.stringify(changedRepository.before?.config_patch.formatting) !==
+        JSON.stringify(changedRepository.next.config_patch.formatting) ||
+        changedRepository.before?.ignore_repository_file !==
+          changedRepository.next.ignore_repository_file);
+    for (const kind of SYNC_KINDS) {
+      const config = state.sync.get(`${target.value.id}/${kind}`);
+      const override = state.syncOverrides.get(`${repositoryId}/${kind}`);
+      const enabled =
+        config?.enabled === true &&
+        repository.detail.repository.effective_enabled &&
+        override?.enabled !== false;
+      const cell = row.cells[kind];
+      const changed =
+        plan.syncConfigs.some((entry) => entry.changed && entry.next.kind === kind) ||
+        plan.syncOverrides.some(
+          (entry) =>
+            entry.changed &&
+            entry.next.kind === kind &&
+            entry.repository.detail.repository.id === repositoryId,
+        ) ||
+        (kind === 'files' && (workspaceFormattingChanged || repositoryFormattingChanged));
+      if (!enabled) row.cells[kind] = { ...cell, state: 'off', changes: 0, reason: undefined };
+      else if (changed || cell.state === 'off')
+        row.cells[kind] = {
+          ...cell,
+          state: cell.observed_at === undefined ? 'unknown' : 'outdated',
+          changes: 0,
+          reason: 'Saved settings need a fresh repository check.',
+        };
+    }
   }
 }
 
@@ -4977,7 +5263,7 @@ function mockRootRuntimeCheckpointState(state: MockState): SettingsCheckpointSta
 function mockRootRuntimeDocument(state: MockState): Record<string, unknown> {
   return {
     background_work_paused: state.runtime.backgroundWorkPaused,
-    bot_config: copyOptionalConfig(state.runtime.behaviorOverride),
+    bot_config: parseRuntimeBehavior(state.runtime.behaviorOverride),
     log_level: state.runtime.logLevelOverride,
     poll_interval: mockRootRuntimeDuration(state.runtime.pollIntervalOverride),
     pending_ci_quiet_period: mockRootRuntimeDuration(state.runtime.pendingCIQuietPeriodOverride),
@@ -4992,7 +5278,7 @@ function mockRootRuntimeDocumentFromInput(
 ): Record<string, unknown> {
   return {
     background_work_paused: input.background_work_paused ?? state.runtime.backgroundWorkPaused,
-    bot_config: copyOptionalConfig(input.bot_config),
+    bot_config: parseRuntimeBehavior(input.bot_config),
     log_level: input.log_level,
     poll_interval: mockRootRuntimeDuration(input.reaction_poll_interval_seconds),
     pending_ci_quiet_period: mockRootRuntimeDuration(input.merge_after_ci_quiet_period_seconds),
@@ -5020,7 +5306,7 @@ function mockRootRuntimeInputFromDocument(
 function applyMockRootRuntimeDocument(state: MockState, document: Record<string, unknown>): void {
   const input = mockRootRuntimeInputFromDocument(document, state.runtime.revision);
   state.runtime.backgroundWorkPaused = input.background_work_paused ?? false;
-  state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
+  state.runtime.behaviorOverride = parseRuntimeBehavior(input.bot_config);
   state.runtime.logLevelOverride = input.log_level;
   state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
   state.runtime.pendingCIQuietPeriodOverride = input.merge_after_ci_quiet_period_seconds;
@@ -5056,16 +5342,16 @@ function mockRootRuntimePaused(value: unknown): boolean {
   return value;
 }
 
-function mockRootRuntimeConfig(value: unknown): ConfigValues | null {
-  if (value === null) return null;
-  if (!isMockRootRuntimeConfig(value)) {
+function mockRootRuntimeConfig(value: unknown): RuntimeBehaviorIntent | null {
+  try {
+    return parseRuntimeBehavior(value);
+  } catch {
     throw new MockApiError(
       409,
       'settings_restore_blocked',
       'the selected settings cannot be restored',
     );
   }
-  return copyConfig(value);
 }
 
 function mockRootRuntimeLogLevel(value: unknown): string | null {
@@ -5101,22 +5387,31 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
     input.background_work_paused !== undefined &&
     typeof input.background_work_paused !== 'boolean'
   ) {
-    invalidMockRootRuntimeSettings('background work pause must be true or false');
+    invalidMockRootRuntimeSettings(
+      'background work pause must be true or false',
+      'background_work_paused',
+    );
   }
-  if (input.bot_config !== null && !isMockRootRuntimeConfig(input.bot_config)) {
-    invalidMockRootRuntimeSettings('behavior defaults are invalid');
+  try {
+    parseRuntimeBehavior(input.bot_config);
+  } catch (error) {
+    invalidMockRootRuntimeSettings(
+      error instanceof Error ? error.message : 'behavior defaults are invalid',
+      error instanceof RuntimeBehaviorValidationError ? error.field : 'bot_config',
+    );
   }
   if (
     input.log_level !== null &&
     (typeof input.log_level !== 'string' || !ROOT_RUNTIME_LOG_LEVELS.has(input.log_level))
   ) {
-    invalidMockRootRuntimeSettings('log level is invalid');
+    invalidMockRootRuntimeSettings('log level is invalid', 'log_level');
   }
   validateMockRootRuntimeDuration(
     input.reaction_poll_interval_seconds,
     0,
     86_400,
     'reaction sweep interval',
+    'reaction_poll_interval_seconds',
     true,
   );
   validateMockRootRuntimeDuration(
@@ -5124,18 +5419,21 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
     0,
     86_400,
     'merge-after-CI quiet period',
+    'merge_after_ci_quiet_period_seconds',
   );
   validateMockRootRuntimeDuration(
     input.path_index_interval_seconds,
     0,
     DEV_MAX_PATH_INDEX_SECONDS,
     'file list refresh interval',
+    'path_index_interval_seconds',
   );
   validateMockRootRuntimeDuration(
     input.session_ttl_seconds,
     60,
     ROOT_RUNTIME_MAX_SESSION_SECONDS,
     'session lifetime',
+    'session_ttl_seconds',
   );
 }
 
@@ -5144,6 +5442,7 @@ function validateMockRootRuntimeDuration(
   minimum: number,
   maximum: number,
   label: string,
+  field: string,
   zeroIsOptional = false,
 ): void {
   if (value === null) return;
@@ -5153,47 +5452,29 @@ function validateMockRootRuntimeDuration(
     value > maximum ||
     (value === 0 ? !zeroIsOptional && minimum > 0 : value < minimum)
   ) {
-    invalidMockRootRuntimeSettings(`${label} is outside the supported range`);
+    invalidMockRootRuntimeSettings(`${label} is outside the supported range`, field);
   }
 }
 
-function isMockRootRuntimeConfig(value: unknown): value is ConfigValues {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).length !== CONFIG_KEYS.length + 1) return false;
-  if (parseFormattingPolicy(candidate.formatting) === null) return false;
-  return CONFIG_KEYS.every((key) => {
-    const held = candidate[key];
-    if (key === 'allowed_commands') return Array.isArray(held) && held.every(isStringValue);
-    if (key === 'command_aliases') {
-      return (
-        held !== null &&
-        typeof held === 'object' &&
-        !Array.isArray(held) &&
-        Object.values(held).every(isStringValue)
-      );
-    }
-    if (key === 'command_prefix') return typeof held === 'string';
-    return typeof held === 'boolean';
-  });
-}
-
-function isStringValue(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
-function invalidMockRootRuntimeSettings(message: string): never {
-  throw new MockApiError(400, 'invalid_runtime_settings', message);
+function invalidMockRootRuntimeSettings(message: string, field?: string): never {
+  throw new MockApiError(
+    400,
+    'invalid_runtime_settings',
+    message,
+    field === undefined ? {} : { field },
+  );
 }
 
 function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
-  const behaviorOverride = copyOptionalConfig(state.runtime.behaviorOverride);
+  const behaviorOverride = parseRuntimeBehavior(state.runtime.behaviorOverride);
   return {
     background_work_paused: state.runtime.backgroundWorkPaused,
     behavior_defaults: {
       deployment: copyConfig(DEFAULT_CONFIG),
-      override: behaviorOverride,
-      effective: behaviorOverride ?? copyConfig(DEFAULT_CONFIG),
+      intent: behaviorOverride,
+      override:
+        behaviorOverride === null ? null : resolveRuntimeBehavior(DEFAULT_CONFIG, behaviorOverride),
+      effective: resolveRuntimeBehavior(DEFAULT_CONFIG, behaviorOverride),
     },
     log_level: {
       deployment: 'info',
@@ -5257,10 +5538,6 @@ function mockDatabaseStatus(): DatabaseStatus {
     latency_ms: 1.24,
     connections: { open: 3, in_use: 1, idle: 2, max: 16, wait_count: 2, wait_ms: 41 },
   };
-}
-
-function copyOptionalConfig(value: ConfigValues | null): ConfigValues | null {
-  return value === null ? null : copyConfig(value);
 }
 
 function copyConfig(value: ConfigValues): ConfigValues {
@@ -5444,12 +5721,17 @@ function mockPolicyStatuses(state: MockState, targetID?: string): QueuePolicySta
         (targetID === undefined || item.target_id === targetID) &&
         !['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
     );
-    const last = state.queue.find(
-      (item) =>
-        item.kind === policy.kind &&
-        (targetID === undefined || item.target_id === targetID) &&
-        ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
-    );
+    const last = [...state.queue]
+      .sort(
+        (a, b) =>
+          Date.parse(b.finished_at ?? b.updated_at) - Date.parse(a.finished_at ?? a.updated_at),
+      )
+      .find(
+        (item) =>
+          item.kind === policy.kind &&
+          (targetID === undefined || item.target_id === targetID) &&
+          ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+      );
     const next =
       current?.eligible_at ?? new Date(now + Number(policy.cadence) / 1_000_000).toISOString();
     return {
@@ -5474,11 +5756,31 @@ function findMockScheduleProfile(state: MockState, encodedID: string): ScheduleP
   return profile;
 }
 
-function saveMockScheduleProfile(
+async function validateMockScheduleHours(
+  state: MockState,
+  input: ScheduleProfileInput | ScheduleProfile,
+): Promise<void> {
+  const problem = scheduleHoursProblems(input)[0];
+  if (problem !== undefined) {
+    const field =
+      problem.index === undefined ? problem.field : `${problem.field}[${problem.index}]`;
+    throw new MockApiError(400, 'invalid_schedule', `${field}: ${problem.message}`);
+  }
+  const timezone = await state.fileRenderer.previewTimezone(input.timezone, '2000-01-01T00:00:00Z');
+  if (!timezone.valid)
+    throw new MockApiError(
+      400,
+      'invalid_schedule',
+      'timezone: Choose a timezone supported by the scheduler',
+    );
+}
+
+async function saveMockScheduleProfile(
   state: MockState,
   input: ScheduleProfileInput,
   encodedID?: string,
-): ScheduleProfile {
+): Promise<ScheduleProfile> {
+  await validateMockScheduleHours(state, input);
   const existing = encodedID === undefined ? undefined : findMockScheduleProfile(state, encodedID);
   if (existing !== undefined && input.expected_revision !== existing.revision) {
     throw new MockApiError(409, 'conflict', 'schedule profile changed; reload and try again');
@@ -5586,6 +5888,17 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
     : {
         targets: uniqueQueueValues(items, (item) => item.target_id),
         repositories: uniqueQueueValues(items, (item) => item.repository_id),
+        repository_names: Object.fromEntries(
+          items
+            .filter((item) => item.repository_id)
+            .map((item) => [item.repository_id!, item.repository_name ?? '']),
+        ),
+        profile_names: Object.fromEntries(
+          items.map((item) => [
+            item.profile_id ?? 'immediate',
+            item.profile_id ? (item.profile_name ?? '') : 'Immediate',
+          ]),
+        ),
         profiles: uniqueQueueValues(items, (item) => item.profile_id ?? 'immediate'),
         states: uniqueQueueValues(items, (item) => item.state),
         workloads: uniqueQueueValues(items, (item) => item.kind),
@@ -5624,7 +5937,7 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
   const nextOffset = offset + limit < filtered.length ? offset + limit : 0;
 
   return {
-    items: structuredClone(page),
+    items: structuredClone(page.map(projectMockQueueItem)),
     next_offset: nextOffset,
     total: filtered.length,
     facets,
@@ -5666,33 +5979,6 @@ function findMockQueueItem(items: QueueItem[], encodedID: string, targetID?: str
   return item;
 }
 
-function mockQueueDetail(item: QueueItem): QueueDetail {
-  const events = [
-    {
-      id: 1,
-      item_id: item.id,
-      actor: 'system',
-      kind: 'created',
-      state: item.state,
-      summary: `Queued ${item.title}`,
-      created_at: item.created_at,
-    },
-  ];
-  if (item.updated_at !== item.created_at) {
-    events.push({
-      id: 2,
-      item_id: item.id,
-      actor: 'system',
-      kind: item.state === 'running' ? 'started' : 'updated',
-      state: item.state,
-      summary: item.state === 'running' ? `Started ${item.title}` : `Updated ${item.title}`,
-      created_at: item.updated_at,
-    });
-  }
-
-  return { item: structuredClone(item), events };
-}
-
 function applyMockQueueAction(
   items: QueueItem[],
   encodedID: string,
@@ -5700,6 +5986,13 @@ function applyMockQueueAction(
   targetID?: string,
 ): QueueItem {
   const item = findMockQueueItem(items, encodedID, targetID);
+  if (!mockQueueActions(item).includes(input.type)) {
+    throw new MockApiError(
+      409,
+      'unsupported_action',
+      'the action is not available in the current state',
+    );
+  }
   const index = items.indexOf(item);
   if (item.revision !== input.expected_revision) {
     throw new MockApiError(409, 'conflict', 'queue item changed; reload and try again');
@@ -5739,7 +6032,7 @@ function applyMockQueueAction(
   }
   items[index] = updated;
 
-  return structuredClone(updated);
+  return structuredClone(projectMockQueueItem(updated));
 }
 
 function previewMockQueueAction(
@@ -6598,12 +6891,15 @@ function devAvatarSVG(login: string): string {
   );
 }
 
-async function readBody<T>(req: IncomingMessage): Promise<T> {
+async function readBody<T>(req: IncomingMessage, uniqueFields: readonly string[] = []): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'), preserveNumberToken) as T;
-  } catch {
+    return parseRequestJSON(Buffer.concat(chunks).toString('utf8'), uniqueFields) as T;
+  } catch (error) {
+    if (error instanceof DuplicateRequestFieldError) {
+      invalidMockRootRuntimeSettings(error.message, error.field);
+    }
     throw new MockApiError(400, 'invalid_request', 'request body must be valid JSON');
   }
 }
@@ -6634,6 +6930,7 @@ async function respondError(
   status: number,
   code: string,
   message: string,
+  invitationToken?: string,
 ): Promise<void> {
   if (!wantsDocument(req)) {
     respond(res, status, { error: { code, message } });
@@ -6641,7 +6938,7 @@ async function respondError(
   }
   let page: string;
   try {
-    page = await renderErrorDocument(state, status, code, message);
+    page = await renderErrorDocument(state, status, code, message, invitationToken);
   } catch (error) {
     /* Loud rather than quiet. A mock that cannot borrow a page and answers with
        JSON instead looks exactly like a mock that decided the caller wanted JSON,
@@ -6676,8 +6973,16 @@ async function renderErrorDocument(
   status: number,
   code: string,
   message: string,
+  invitationToken?: string,
 ): Promise<string> {
-  const descriptor = escapeHtml(JSON.stringify({ status, code, message }));
+  const descriptor = escapeHtml(
+    JSON.stringify({
+      status,
+      code,
+      message,
+      ...(invitationToken ? { invitation_token: invitationToken } : {}),
+    }),
+  );
 
   return (await state.shell())
     .replace(
@@ -6701,3 +7006,7 @@ function escapeHtml(value: string): string {
 }
 
 export default mockServer;
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === 'string';
+}

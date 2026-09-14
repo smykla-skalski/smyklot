@@ -49,6 +49,10 @@ func bodyBoundFor(kind orgsync.Kind) int64 {
 	return maxRequestBody
 }
 
+type installationLocator interface {
+	AppInstallationURL(context.Context) (string, error)
+}
+
 type catalogSyncer interface {
 	SyncCatalog(context.Context) ([]string, error)
 }
@@ -89,17 +93,19 @@ type WorkQueueController interface {
 
 // Dependencies are the service capabilities used by panel handlers.
 type Dependencies struct {
-	Store     storage.Store
-	Catalog   catalogSyncer
-	Users     userResolver
-	SignIn    signInProvider
-	Random    io.Reader
-	Now       func() time.Time
-	Runtime   RuntimeController
-	PendingCI PendingCIController
-	Gates     PendingCIGateController
-	Queue     WorkQueueController
-	SyncPlans syncScopeVerifier
+	Installation installationLocator
+	Store        storage.Store
+	Catalog      catalogSyncer
+	Users        userResolver
+	SignIn       signInProvider
+	Random       io.Reader
+	Now          func() time.Time
+	Runtime      RuntimeController
+	PendingCI    PendingCIController
+	Gates        PendingCIGateController
+	Queue        WorkQueueController
+	Recovery     DeliveryRecoveryChecker
+	SyncPlans    syncScopeVerifier
 	// Candidates reads the roster logins are completed against. Optional: a
 	// panel without one offers no completion, which is what the dialogs did
 	// before there was any.
@@ -110,6 +116,7 @@ type Dependencies struct {
 
 // Server owns the panel routes and their authenticated runtime state.
 type Server struct {
+	installation installationLocator
 	cfg          Config
 	store        storage.Store
 	catalog      catalogSyncer
@@ -129,6 +136,7 @@ type Server struct {
 	pendingCI    PendingCIController
 	gates        PendingCIGateController
 	queue        WorkQueueController
+	recovery     DeliveryRecoveryChecker
 	syncPlans    syncScopeVerifier
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
@@ -192,6 +200,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 	}
 
 	return &Server{
+		installation: deps.Installation,
 		cfg:          validated,
 		store:        deps.Store,
 		catalog:      deps.Catalog,
@@ -210,6 +219,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		pendingCI:    deps.PendingCI,
 		gates:        deps.Gates,
 		queue:        deps.Queue,
+		recovery:     deps.Recovery,
 		syncPlans:    deps.SyncPlans,
 	}, nil
 }
@@ -225,10 +235,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	base := s.cfg.BasePath
 
-	mux.HandleFunc("GET "+base+"/auth/github/start", s.startSignIn)
-	mux.HandleFunc("GET "+base+"/auth/github/callback", s.finishSignIn)
-	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
-	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
+	s.registerSessionRoutes(mux, base)
+	mux.HandleFunc("GET "+base+"/api/v1/schedule-timezone", s.getScheduleTimezone)
+	mux.HandleFunc("GET "+base+"/api/v1/schedule-local-time", s.getScheduleLocalTime)
+	mux.HandleFunc("POST "+base+"/api/v1/schedule-preview", s.postSchedulePreview)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
 	mux.HandleFunc("GET "+base+"/api/v1/notifications", s.getSecurityNotifications)
 	mux.HandleFunc(
@@ -276,6 +286,7 @@ func (s *Server) Handler() http.Handler {
 		s.getSyncOverride,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
+	s.registerSyncHistoryRoutes(mux, base)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/sync/run-now", s.postSyncRunNow)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/status", s.getSyncStatus)
 	mux.HandleFunc(
@@ -296,10 +307,7 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue", s.getTargetQueue)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue/{queue}", s.getTargetQueueItem)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions/preview", s.previewTargetQueueAction)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions", s.postTargetQueueAction)
+	s.registerQueueRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedules", s.getTargetSchedules)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedule-requests", s.getTargetScheduleRequests)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/schedule-requests", s.postTargetScheduleRequest)
@@ -314,6 +322,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/", s.serveAsset)
 
 	return s.secureHeaders(mux)
+}
+
+func (s *Server) registerSessionRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc("GET "+base+"/auth/github/start", s.startSignIn)
+	mux.HandleFunc("GET "+base+"/auth/github/callback", s.finishSignIn)
+	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
+	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
+	mux.HandleFunc("GET "+base+"/api/v1/installation", s.getInstallation)
 }
 
 func (s *Server) registerWorkspaceSettingsRoutes(mux *http.ServeMux, base string) {

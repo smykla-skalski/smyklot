@@ -391,12 +391,14 @@ type Filter struct {
 }
 
 type Facets struct {
-	Targets      []string   `json:"targets"`
-	Repositories []string   `json:"repositories"`
-	Profiles     []string   `json:"profiles"`
-	States       []State    `json:"states"`
-	Kinds        []Kind     `json:"workloads"`
-	Priorities   []Priority `json:"priorities"`
+	RepositoryNames map[string]string `json:"repository_names,omitempty"`
+	ProfileNames    map[string]string `json:"profile_names,omitempty"`
+	Targets         []string          `json:"targets"`
+	Repositories    []string          `json:"repositories"`
+	Profiles        []string          `json:"profiles"`
+	States          []State           `json:"states"`
+	Kinds           []Kind            `json:"workloads"`
+	Priorities      []Priority        `json:"priorities"`
 }
 
 type Page struct {
@@ -458,6 +460,8 @@ type RecurringLease struct {
 }
 
 type RecurringCompletion struct {
+	// Attempt is the claimed lease generation. A previous worker cannot finish a newer attempt.
+	Attempt        int
 	Failure        string
 	SuccessSummary string
 	Retryable      bool
@@ -465,26 +469,36 @@ type RecurringCompletion struct {
 }
 
 type RecurringRequest struct {
-	Kind         Kind
-	TargetID     *string
-	RepositoryID *string
-	Title        string
-	ActorID      string
-	Reason       string
-	Now          time.Time
+	// RequestKey preserves the accepted occurrence across retries. Empty keys are
+	// reserved for callers that intentionally issue a new command on every call.
+	RequestKey string
+	// SessionTokenHash is required for explicit sync checks, not scheduled claims.
+	SessionTokenHash string
+	Kind             Kind
+	TargetID         *string
+	RepositoryID     *string
+	Title            string
+	ActorID          string
+	Reason           string
+	Now              time.Time
 }
 
 type Store interface {
 	ListWorkQueue(context.Context, Filter) (Page, error)
 	GetQueueItem(context.Context, string) (Item, error)
 	ListQueueEvents(context.Context, string, int) ([]Event, error)
+	QueueRunWasRequested(context.Context, string) (bool, error)
 	CreateQueueItem(context.Context, Item) (Item, error)
 	ApplyQueueAction(context.Context, string, ItemAction) (Item, error)
 	ClaimNextRecurringWork(context.Context, RecurringLease) (Item, bool, error)
 	ClaimRecurringWork(context.Context, RecurringClaim) (Item, bool, error)
 	EnsureRecurringWork(context.Context, RecurringClaim) (Item, error)
 	SupersedeMissingRecurringWork(context.Context, []RecurringClaim, time.Time) ([]Item, error)
-	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
+	// Sync scans preserve a current live plan, returning its blocking identity.
+	// Expired waiting plans retire atomically with acceptance of a fresh scan.
+	// Receipt recovery precedes this decision and never retires newer work.
+	RequestRecurringWork(context.Context, RecurringRequest, func() time.Time) (Item, error)
+	FindRecurringWorkRequest(context.Context, RecurringRequest, func() time.Time) (Item, error)
 	FinishRecurringWork(context.Context, string, RecurringCompletion, time.Time) (Item, error)
 	PruneWorkQueue(context.Context, time.Time) (int64, error)
 	NextQueueAvailability(context.Context, Lane, time.Time) (*time.Time, error)

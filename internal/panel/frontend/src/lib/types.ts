@@ -1,3 +1,4 @@
+import type { RuntimeBehaviorIntent } from './runtime-behavior';
 import type { ArrayStrategy, JsonNumber } from '#lib/merge.js';
 import type {
   FormattingPatch,
@@ -480,7 +481,19 @@ export interface QueueEvent {
   created_at: string;
 }
 
+export interface DeliveryOperation {
+  retained: boolean;
+  revision: number;
+  current: {
+    id: number;
+    status: 'running' | 'failed' | 'succeeded';
+    payload_available: boolean;
+    queue: { id: string; state: QueueState; eligible_at: string } | null;
+  } | null;
+}
+
 export interface QueueDetail {
+  delivery?: DeliveryOperation;
   item: QueueItem;
   events: QueueEvent[];
 }
@@ -493,6 +506,8 @@ export interface QueuePage {
   facets: {
     targets: string[];
     repositories: string[];
+    repository_names?: Record<string, string>;
+    profile_names?: Record<string, string>;
     profiles: string[];
     states: QueueState[];
     workloads: QueueWorkload[];
@@ -733,6 +748,7 @@ export interface RootRuntimeSettings {
   behavior_defaults: {
     deployment: ConfigValues;
     override: ConfigValues | null;
+    intent?: RuntimeBehaviorIntent | null;
     effective: ConfigValues;
   };
   log_level: {
@@ -786,7 +802,7 @@ export interface RootRuntimeSettings {
 export interface RootRuntimeSettingsInput {
   /** Optional for older clients; omitted writes preserve the current pause state. */
   background_work_paused?: boolean;
-  bot_config: ConfigValues | null;
+  bot_config: ConfigValues | RuntimeBehaviorIntent | null;
   log_level: string | null;
   reaction_poll_interval_seconds: number | null;
   merge_after_ci_quiet_period_seconds: number | null;
@@ -1153,6 +1169,8 @@ export type AuditCategory =
 
 export interface DeliveryFailure {
   id: string;
+  /** Only present when the server found a retained queue record for this delivery. */
+  queue_item_id?: string;
   workspace?: PanelAccount;
   delivery_id: string;
   repository_full_name: string;
@@ -1211,6 +1229,7 @@ export interface Page<T> {
 
 export interface PanelErrorBody {
   error: {
+    field?: string;
     code: string;
     message: string;
     kind?: SyncKind;
@@ -1508,9 +1527,24 @@ export type SyncKind = (typeof SYNC_KINDS)[number];
  * switched off there.
  */
 export interface SyncCell {
+  proposal_url?: string;
   /** Why this kind cannot continue, when blocked. */
   reason?: string;
-  state: 'in_step' | 'pending' | 'refused' | 'off';
+  state:
+    | 'in_step'
+    | 'applied'
+    | 'pending'
+    | 'refused'
+    | 'off'
+    | 'unknown'
+    | 'outdated'
+    | 'proposed'
+    | 'declined'
+    | 'needs_sync'
+    | 'check_failed';
+  observed_at?: string;
+  observed_outcome?:
+    'matched' | 'applied' | 'proposed' | 'declined' | 'different' | 'failed' | 'blocked';
   /** Pending only: how many of the plan's changes land here for this kind. */
   changes?: number;
 }
@@ -1533,7 +1567,7 @@ export interface SyncStatus {
   /** Installation-wide blockers, shown once rather than once per repository. */
   unavailable?: Partial<Record<SyncKind, string>>;
   invalid?: Partial<Record<SyncKind, string>>;
-  checked_at: string;
+  latest_observed_at: string | null;
   repositories: SyncRepositoryStatus[];
 }
 
@@ -1635,6 +1669,7 @@ export interface SyncActionDetail {
 
 /** One change a plan would make. */
 export interface SyncAction {
+  proposal_url?: string;
   repository: string;
   kind: string;
   operation: 'create' | 'update' | 'delete';
@@ -1655,10 +1690,38 @@ export interface SyncAction {
 }
 
 /** A computed answer to "what would change", and the unit somebody approves. */
+export type SyncPlanSummary = Pick<
+  SyncPlan,
+  'id' | 'trigger' | 'state' | 'counts' | 'computed_at' | 'finished_at'
+>;
+
+export interface SyncDispatchCapability {
+  action: 'dispatch';
+  available: boolean;
+  reason:
+    | 'available'
+    | 'admin_or_owner_required'
+    | 'approval_required'
+    | 'already_running'
+    | 'plan_expired'
+    | 'plan_changed'
+    | 'plan_finished'
+    | 'queue_unavailable'
+    | 'queue_finished'
+    | 'state_unsupported';
+  effect: 'schedule_reviewed_changes_without_waiting_for_window';
+  plan_id: string;
+  queue_id?: string;
+  expected_revision?: number;
+}
+
 export interface SyncPlan {
+  /** Present on API projections; absent on persisted mock seeds and old responses. */
+  dispatch?: SyncDispatchCapability;
   id: string;
   trigger: string;
-  state: 'computed' | 'approved' | 'applying' | 'applied' | 'failed' | 'stale' | 'expired';
+  state:
+    'computed' | 'approved' | 'applying' | 'applied' | 'failed' | 'stale' | 'expired' | 'discarded';
   digest: string;
   counts: { create: number; update: number; delete: number };
   actions: SyncAction[];
@@ -1670,8 +1733,115 @@ export interface SyncPlan {
   queue_item?: QueueItem;
 }
 
+// UI intent precedes persistence. Only the complete input may cross the API boundary.
+export type SyncRunNowIntent = { reason: string; request_key?: string } & (
+  { action: 'check' } | { action: 'dispatch'; plan_id: string; expected_revision: number }
+);
+
+export type SyncRunNowInput = SyncRunNowIntent & { request_key: string };
+
 export interface SyncRunNowResponse {
-  status: 'scan_queued' | 'approval_required' | 'already_running' | 'plan_dispatched';
+  status:
+    | 'check_accepted'
+    | 'changes_pending'
+    | 'approval_required'
+    | 'already_running'
+    | 'dispatch_accepted';
   plan?: SyncPlan;
   queue_item?: QueueItem;
+  /** Acceptance identity, not a snapshot of current queue state. */
+  check_id?: string;
+  plan_id?: string;
+  queue_id?: string;
+  /** True when receipt lookup recovered existing acceptance before submission. */
+  repeated?: boolean;
+}
+
+/** Historical acceptance, independent of current work or browser persistence. */
+export type SyncRequestAcceptance = {
+  request_key: string;
+  reason: string;
+  accepted_at: string;
+} & (
+  | { action: 'check'; check_id: string }
+  | { action: 'dispatch'; plan_id: string; queue_id: string; expected_revision: number }
+);
+
+export interface SyncRequestHistory {
+  items: SyncRequestAcceptance[];
+  next_cursor: string | null;
+}
+
+export interface SyncCheckObservation {
+  repository_id: string;
+  repository: string;
+  kind: SyncKind;
+  outcome: NonNullable<SyncCell['observed_outcome']> | '';
+  observed_at: string;
+  input_digest: string;
+  reason?: string;
+  proposal_url?: string;
+  cached: boolean;
+}
+
+export interface SyncCheckOutcome {
+  blocking_plan_id?: string;
+  completed_at: string;
+  disposition: 'checked' | 'disabled' | 'unpermitted' | 'deferred';
+  summary: string;
+  counts: Partial<Record<SyncCheckObservation['outcome'], number>>;
+  cached: number;
+  missing_permissions: SyncKind[] | null;
+}
+
+/** Comparison history, current worker evidence and workspace actions are distinct. */
+export interface SyncCheckResponse {
+  check_id: string;
+  target_id: string;
+  observed_at: string;
+  result: { result_plan_id?: string; outcome?: SyncCheckOutcome } | null;
+  execution: {
+    state: QueueItem['state'];
+    summary: string;
+    progress_current: number;
+    progress_total: number;
+    attempt: number;
+    started_at: string | null;
+    finished_at: string | null;
+  } | null;
+  check: SyncCheckCapability;
+}
+
+/** Current workspace capability, including when the inspected plan is historical. */
+export interface SyncCheckCapability {
+  action: 'check';
+  target_id: string;
+  available: boolean;
+  reason:
+    | 'available'
+    | 'admin_or_owner_required'
+    | 'changes_pending'
+    | 'changes_running'
+    | 'check_running';
+  effect: 'request_repository_check';
+  blocking_plan_id?: string;
+  running_check_id?: string;
+}
+
+export interface SyncPlanResponse {
+  plan: SyncPlan | null;
+  check: SyncCheckCapability;
+}
+
+/** Original acceptance plus facts read during the stated observation interval. */
+export interface SyncOperationResponse {
+  target_id: string;
+  acceptance: SyncRequestAcceptance;
+  observation_started_at: string;
+  observed_at: string;
+  comparison: SyncCheckResponse['result'];
+  plan: SyncPlanSummary | null;
+  execution: SyncCheckResponse['execution'];
+  check: SyncCheckCapability;
+  dispatch: SyncDispatchCapability | null;
 }

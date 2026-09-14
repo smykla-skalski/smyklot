@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsSaveComposer from '../src/lib/components/SettingsSaveComposer.svelte';
 
@@ -13,7 +13,45 @@ const base = {
 };
 
 describe('SettingsSaveComposer [Component]', () => {
-  afterEach(() => vi.useRealTimers());
+  let resize: () => void;
+  const disconnect = vi.fn();
+  beforeEach(() => {
+    disconnect.mockClear();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  it('updates measured clearance and releases it on unmount', () => {
+    const view = render(SettingsSaveComposer, base);
+    const bar = screen.getByRole('complementary', { name: 'Settings draft' });
+    Object.defineProperty(bar, 'offsetHeight', { configurable: true, value: 90 });
+    bar.style.bottom = '16px';
+    resize();
+    expect(document.documentElement.style.getPropertyValue('--settings-composer-clearance')).toBe(
+      '114px',
+    );
+    Object.defineProperty(bar, 'offsetHeight', { configurable: true, value: 150 });
+    resize();
+    expect(document.documentElement.style.getPropertyValue('--settings-composer-clearance')).toBe(
+      '174px',
+    );
+    view.unmount();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(document.documentElement.style.getPropertyValue('--settings-composer-clearance')).toBe(
+      '',
+    );
+  });
   it('describes one workspace-wide draft and exposes one Save and Discard pair', async () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();

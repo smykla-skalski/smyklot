@@ -58,6 +58,14 @@ var _ = Describe("PostgreSQL store [Unit]", func() {
 
 			return store
 		},
+		RemoveQueueItem: func(ctx context.Context, itemID string) {
+			raw := connect(ctx)
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			_, err := raw.ExecContext(ctx, "DELETE FROM "+schema+".queue_events WHERE queue_item_id = $1", itemID)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = raw.ExecContext(ctx, "DELETE FROM "+schema+".queue_items WHERE id = $1", itemID)
+			Expect(err).NotTo(HaveOccurred())
+		},
 		RejectSecurityNotifications: func(ctx context.Context) {
 			raw := connect(ctx)
 			defer func() { Expect(raw.Close()).To(Succeed()) }()

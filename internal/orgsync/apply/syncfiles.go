@@ -221,7 +221,7 @@ func applyFileActions(
 	client *github.Client,
 	target syncTarget,
 	actions []orgsync.Action,
-) error {
+) (kindObservation, error) {
 	var (
 		files    []plannedFile
 		proposal string
@@ -230,7 +230,7 @@ func applyFileActions(
 	for _, action := range actions {
 		planned, err := orgsync.DecodeFile(action.Payload)
 		if err != nil {
-			return err
+			return kindObservation{}, err
 		}
 
 		// Every action of one repository's file work names the same branch,
@@ -242,7 +242,7 @@ func applyFileActions(
 			proposal = planned.Proposal
 
 		case planned.Proposal != proposal:
-			return fmt.Errorf("%w: this repository's file work names two branches, %s and %s",
+			return kindObservation{}, fmt.Errorf("%w: this repository's file work names two branches, %s and %s",
 				orgsync.ErrInvalidPlan, proposal, planned.Proposal)
 		}
 
@@ -254,7 +254,7 @@ func applyFileActions(
 	}
 
 	if proposal == "" {
-		return fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
+		return kindObservation{}, fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
 	}
 
 	return proposeFiles(ctx, client, target, proposal, files)
@@ -274,19 +274,19 @@ func proposeFiles(
 	target syncTarget,
 	proposal string,
 	files []plannedFile,
-) error {
+) (kindObservation, error) {
 	if target.DefaultBranch == "" {
-		return fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
+		return kindObservation{}, fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
 	}
 
 	branch, err := readProposal(ctx, client, target, proposal)
 	if err != nil {
-		return err
+		return kindObservation{}, err
 	}
 
 	changed, err := commitFiles(ctx, client, target, proposal, branch, files)
 	if err != nil {
-		return err
+		return kindObservation{}, err
 	}
 
 	if !changed && branch.BuildOn == "" {
@@ -296,10 +296,14 @@ func proposeFiles(
 		// There is nothing to propose and nothing to open.
 		logging.From(ctx).Info("the files already say what they should; nothing proposed")
 
-		return nil
+		return kindObservation{state: orgsync.ObservationMatched}, nil
 	}
 
-	return openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files)
+	pull, err := openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files)
+	if err != nil {
+		return kindObservation{}, err
+	}
+	return kindObservation{state: orgsync.ObservationProposed, proposalURL: pull.URL}, nil
 }
 
 // proposalBranch is where a repository's file work stands.
@@ -568,15 +572,16 @@ func openOrUpdateProposal(
 	proposal string,
 	pull *github.PullRequest,
 	files []plannedFile,
-) error {
+) (github.PullRequest, error) {
 	body := fileProposalBody(files)
 
 	if pull != nil {
 		// Kept current rather than left as it was written. A proposal sits
 		// until somebody merges it, and what it would do moves as the
 		// repository does.
-		return client.EditPullRequest(
+		err := client.EditPullRequest(
 			ctx, target.Owner, target.Name, pull.Number, fileProposalTitle, body)
+		return *pull, err
 	}
 
 	opened, err := client.CreatePullRequest(
@@ -594,12 +599,12 @@ func openOrUpdateProposal(
 		// files are right - reading it as success recorded a repository as
 		// matching while what it should hold was missing, and the branch is
 		// named after the outcome, so nothing would ever ask again.
-		return err
+		return github.PullRequest{}, err
 	}
 
 	logging.From(ctx).Info("files proposed", "pull_request", opened.Number)
 
-	return nil
+	return opened, nil
 }
 
 // fileProposalBody says what the proposal does, and what closing it means.

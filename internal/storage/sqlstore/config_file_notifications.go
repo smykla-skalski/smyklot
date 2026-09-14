@@ -22,7 +22,7 @@ func (s *Store) NotifyConfigFileChange(ctx context.Context, targetID, repository
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.lockInstallationSettingsTarget(ctx, tx, targetID); err != nil {
+	if err := s.lockInstallationTarget(ctx, tx, targetID); err != nil {
 		return err
 	}
 	if err := notifyConfigFileChange(ctx, tx, targetID, repositoryID, now); err != nil {

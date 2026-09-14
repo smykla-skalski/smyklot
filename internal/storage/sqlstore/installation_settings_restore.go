@@ -34,7 +34,7 @@ func (s *Store) RestoreInstallationSettings(
 	if err := lockPendingCIPolicy(ctx, tx, s.dialect); err != nil {
 		return storage.SaveInstallationSettingsResult{}, err
 	}
-	if err := s.lockInstallationSettingsTarget(ctx, tx, request.TargetID); err != nil {
+	if err := s.lockInstallationTarget(ctx, tx, request.TargetID); err != nil {
 		return storage.SaveInstallationSettingsResult{}, err
 	}
 	preparation, err := prepareInstallationSettingsRestore(ctx, tx, request)

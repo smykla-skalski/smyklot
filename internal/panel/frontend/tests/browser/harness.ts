@@ -97,7 +97,7 @@ export function addressOf(panel: Panel, route: string): string {
     : `${panel.origin}/${path}`;
 }
 
-export async function startPanel(): Promise<Panel> {
+export async function startPanel(options: { liveSync?: boolean } = {}): Promise<Panel> {
   process.env.SMYKLOT_PANEL_DEV_MOCK = '1';
   // Select the same isolated generated-output and dependency-cache lane as unit
   // Vitest, including when this harness runs standalone. Suites use it serially.
@@ -116,6 +116,7 @@ export async function startPanel(): Promise<Panel> {
      have the table re-sort itself half way through the measurement, so it asks for the queue to
      hold still. Nothing else about the mock changes. */
   process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN = '1';
+  process.env.SMYKLOT_PANEL_DEV_MOCK_SYNC_LIVE = options.liveSync ? '1' : '0';
   // Bound to the address the browser is told to use. Vite's default host resolves to the IPv6
   // loopback on some machines and the IPv4 one on others, and it reports the same port either way,
   // so naming one is the difference between a measurement and a connection refused.

@@ -34,7 +34,7 @@ func (store *deliveryPauseStore) LeaseDelivery(
 	}
 
 	return storage.DeliveryLeaseResult{
-		Work: &storage.DeliveryWork{ID: 7, DeliveryID: "delivery-7"},
+		Work: &storage.DeliveryWork{ID: 7, SourceOrder: 3, DeliveryID: "delivery-7"},
 	}, nil
 }
 
@@ -67,6 +67,8 @@ var _ = Describe("Delivery pause [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(lease.Work).NotTo(BeNil())
 		Expect(store.leases).To(Equal(1))
+		Expect(lease.Work.ClaimID).To(Equal(int64(7)))
+		Expect(lease.Work.SourceOrder).To(Equal(int64(3)))
 	})
 
 	It("holds the pause guard until durable lease acquisition finishes", func(ctx SpecContext) {

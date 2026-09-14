@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { queueSeeds, syncPlanSeed } from '../dev/fixtures';
 import { repositorySyncHealth, syncIssues, syncPermissionsHref } from '../src/lib/sync-health';
-import type { SyncRepositoryStatus, SyncStatus } from '../src/lib/types';
+import type { SyncCell, SyncRepositoryStatus, SyncStatus } from '../src/lib/types';
 
 const repository = (name: string): SyncRepositoryStatus => ({
   repository: name,
@@ -15,8 +15,29 @@ const repository = (name: string): SyncRepositoryStatus => ({
 const plan = () => syncPlanSeed((offset) => new Date(Date.UTC(2026, 8, 5) + offset).toISOString());
 
 describe('automatic sync health [Unit]', () => {
+  it.each([
+    ['unknown', 'unchecked'],
+    ['outdated', 'unchecked'],
+    ['check_failed', 'unchecked'],
+    ['proposed', 'review'],
+    ['declined', 'review'],
+    ['needs_sync', 'syncing'],
+    ['applied', 'settled'],
+    ['in_step', 'settled'],
+  ] as const)('classifies %s without pretending it is synchronized', (state, expected) => {
+    const row = repository('api');
+    row.cells.files = { state };
+    expect(repositorySyncHealth(row)).toBe(expected);
+  });
+
+  it('fails closed for a future status value', () => {
+    const row = repository('api');
+    row.cells.files = { state: 'future' as SyncCell['state'] };
+    expect(repositorySyncHealth(row)).toBe('unchecked');
+  });
+
   it('keeps queued work and automatic retries out of human attention', () => {
-    const status: SyncStatus = { checked_at: '', repositories: [repository('api')] };
+    const status: SyncStatus = { latest_observed_at: '', repositories: [repository('api')] };
     for (const state of ['approved', 'applying'] as const) {
       expect(syncIssues(status, { ...plan(), state })).toEqual([]);
     }
@@ -27,7 +48,11 @@ describe('automatic sync health [Unit]', () => {
     const rows = ['api', 'web'].map(repository);
     for (const row of rows) row.cells.files = { state: 'refused' };
     const issues = syncIssues(
-      { checked_at: '', repositories: rows, unavailable: { files: 'Contents write is required' } },
+      {
+        latest_observed_at: '',
+        repositories: rows,
+        unavailable: { files: 'Contents write is required' },
+      },
       null,
     );
     expect(issues).toEqual([
@@ -47,7 +72,11 @@ describe('automatic sync health [Unit]', () => {
     const queue = queueSeeds((offset) => new Date(offset).toISOString())[0]!;
     const pending = plan();
     const issues = syncIssues(
-      { checked_at: '', repositories: rows, unavailable: { files: 'Contents write is required' } },
+      {
+        latest_observed_at: '',
+        repositories: rows,
+        unavailable: { files: 'Contents write is required' },
+      },
       {
         ...pending,
         state: 'computed',
@@ -64,7 +93,7 @@ describe('automatic sync health [Unit]', () => {
     row.cells.files = { state: 'refused' };
     row.reason = 'docs is not a directory';
     expect(repositorySyncHealth(row)).toBe('blocked');
-    expect(syncIssues({ checked_at: '', repositories: [row] }, null)).toMatchObject([
+    expect(syncIssues({ latest_observed_at: '', repositories: [row] }, null)).toMatchObject([
       { repository: 'api', kind: 'files', detail: row.reason },
     ]);
   });
@@ -72,7 +101,11 @@ describe('automatic sync health [Unit]', () => {
   it('surfaces an unreadable configuration without requiring its editor to load', () => {
     expect(
       syncIssues(
-        { checked_at: '', repositories: [], invalid: { labels: 'Invalid stored configuration' } },
+        {
+          latest_observed_at: '',
+          repositories: [],
+          invalid: { labels: 'Invalid stored configuration' },
+        },
         null,
       ),
     ).toMatchObject([{ kind: 'labels', title: 'Configuration needs a fix', permission: false }]);
@@ -84,7 +117,7 @@ describe('automatic sync health [Unit]', () => {
     row.cells.files = { state: 'refused', reason: 'docs is not a directory' };
     row.reason = 'Labels permission is missing';
     const issues = syncIssues(
-      { checked_at: '', repositories: [row], unavailable: { labels: row.reason } },
+      { latest_observed_at: '', repositories: [row], unavailable: { labels: row.reason } },
       null,
     );
     expect(issues).toHaveLength(2);

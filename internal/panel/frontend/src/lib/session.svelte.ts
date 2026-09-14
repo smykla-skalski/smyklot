@@ -1,3 +1,4 @@
+import { SyncRequestController } from './sync-request-controller.svelte';
 /**
  * Session state shared across the panel's route tree.
  *
@@ -85,6 +86,32 @@ export class PanelSession {
   readonly queryClient: QueryClient;
 
   loading = $state(true);
+  private syncPlanFocusTarget = $state<{ targetId: string; elementId: string } | null>(null);
+  private syncPlanReturnFocus: { targetId: string; elementId: string } | null = null;
+  private syncRequestFocusTarget = $state<string | null>(null);
+  // The controller identity cache is not rendered. Each controller owns its reactivity.
+  private readonly syncRequests: Record<string, SyncRequestController> = {};
+
+  syncRequestController(actorId: string, targetId: string): SyncRequestController {
+    const scope = JSON.stringify([actorId, targetId]);
+    let controller = this.syncRequests[scope];
+    if (!controller) {
+      controller = new SyncRequestController(actorId, targetId, {
+        runSyncNow: this.api.runSyncNow,
+        fetchOperation: this.api.fetchSyncOperation,
+        storage: () => window.sessionStorage,
+        refresh: async (id) => {
+          await Promise.all([
+            this.queryClient.invalidateQueries({ queryKey: ['sync-plan', id] }),
+            this.queryClient.invalidateQueries({ queryKey: ['sync-status', id] }),
+          ]);
+        },
+      });
+      this.syncRequests[scope] = controller;
+    }
+    return controller;
+  }
+
   viewer = $state.raw<PanelViewer | null>(null);
   targets = $state.raw<PanelTarget[]>([]);
   selectedId = $state<string | null>(null);
@@ -505,6 +532,141 @@ export class PanelSession {
     return 'overview';
   }
 
+  get currentSyncPlan(): string | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncPlan ?? null)
+      : null;
+  }
+
+  get currentSyncCheck(): string | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncCheck ?? null)
+      : null;
+  }
+
+  get currentSyncRequest(): { action: 'check' | 'dispatch'; requestKey: string } | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncRequest ?? null)
+      : null;
+  }
+
+  syncRequestHref(action: 'check' | 'dispatch', requestKey: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'overview',
+          syncRequest: { action, requestKey },
+        });
+  }
+
+  openSyncRequest(action: 'check' | 'dispatch', requestKey: string): void {
+    const target = this.selectedTarget;
+    if (target !== null)
+      void this.navigate({
+        account: target.account.login,
+        view: 'sync',
+        sync: 'overview',
+        syncRequest: { action, requestKey },
+      });
+  }
+
+  async closeSyncRequest(): Promise<void> {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    await this.navigate(this.syncRoute(target, 'overview'));
+    this.syncRequestFocusTarget = target.id;
+  }
+
+  restoreSyncRequestFocus(targetId: string, element: HTMLButtonElement): void {
+    if (this.syncRequestFocusTarget !== targetId) return;
+    this.syncRequestFocusTarget = null;
+    if (this.selectedId === targetId && this.currentSyncRequest === null) element.focus();
+  }
+
+  syncCheckHref(id: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'overview',
+          syncCheck: id,
+        });
+  }
+
+  syncCheckResultHref(checkId: string, planId: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'plan',
+          syncCheck: checkId,
+          syncPlan: planId,
+        });
+  }
+
+  openSyncCheck(id: string): void {
+    const target = this.selectedTarget;
+    if (target !== null)
+      void this.navigate({
+        account: target.account.login,
+        view: 'sync',
+        sync: 'overview',
+        syncCheck: id,
+      });
+  }
+
+  syncHistoryResultHref(id: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'history',
+          syncPlan: id,
+        });
+  }
+
+  openSyncPlan(planId: string, history = false, returnFocusId = ''): void {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    this.syncPlanReturnFocus = returnFocusId
+      ? { targetId: target.id, elementId: returnFocusId }
+      : null;
+    void this.navigate({
+      account: target.account.login,
+      view: 'sync',
+      sync: history ? 'history' : 'plan',
+      syncPlan: planId,
+    });
+  }
+
+  async closeSyncPlan(): Promise<void> {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    const destination = this.syncPlanReturnFocus;
+    this.syncPlanReturnFocus = null;
+    await this.navigate(this.syncRoute(target, 'overview'));
+    this.syncPlanFocusTarget = destination;
+  }
+
+  restoreSyncPlanFocus(targetId: string, element: HTMLElement): void {
+    const destination = this.syncPlanFocusTarget;
+    if (destination?.targetId !== targetId || destination.elementId !== element.id) return;
+    this.syncPlanFocusTarget = null;
+    if (this.selectedId === targetId && this.currentSyncSection === 'overview') element.focus();
+  }
+
   selectSyncSection(section: SyncSection): void {
     const target = this.selectedTarget;
     if (target === null) return;
@@ -512,7 +674,10 @@ export class PanelSession {
       this.currentView === 'sync' &&
       this.currentSyncSection === section &&
       this.currentSyncRuleset === null &&
-      this.currentSyncFile === null
+      this.currentSyncFile === null &&
+      this.currentSyncPlan === null &&
+      this.currentSyncCheck === null &&
+      this.currentSyncRequest === null
     ) {
       return;
     }
@@ -871,6 +1036,7 @@ export class PanelSession {
         this.queryClient.invalidateQueries({ queryKey: ['queue-detail'] }),
         this.queryClient.invalidateQueries({ queryKey: ['schedules'] }),
         this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['sync-history'] }),
         this.queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
         this.queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
       ]);

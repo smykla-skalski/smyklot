@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, onMount, tick } from 'svelte';
+  import { SyncRequestController } from '#lib/sync-request-controller.svelte.js';
+  import Callout from './Callout.svelte';
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -35,6 +37,8 @@
     SyncOverride,
     SyncPlan,
     SyncRunNowResponse,
+    SyncRunNowInput,
+    SyncRunNowIntent,
     SyncStatus,
   } from '#lib/types.js';
   import type {
@@ -43,7 +47,16 @@
   } from '#lib/sync-file-render.generated.js';
   import type { SyncSection } from '#lib/routes.js';
 
+  import SyncHistory from './SyncHistory.svelte';
+  import SyncRequests from './SyncRequests.svelte';
+  import SyncOperationInspector from './SyncOperationInspector.svelte';
+  import SyncCheckInspector from './SyncCheckInspector.svelte';
+  import Link from './Link.svelte';
+  import type { SyncCheckResponse } from '../types';
+  import type { Page, SyncPlanSummary } from '../types';
   import FormError from './FormError.svelte';
+  import ResultProblem from './ResultProblem.svelte';
+  import { syncResultProblem } from '../sync-result-error';
   import Modal from './Modal.svelte';
   import Button from './Button.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -58,6 +71,7 @@
 
   const {
     targetId,
+    actorId = '',
     section,
     rulesetName = null,
     fileName = null,
@@ -66,6 +80,27 @@
     canControl = false,
     fetchConfig,
     fetchPlan,
+    fetchHistory,
+    fetchRequests,
+    fetchOperation,
+    selectedRequest = null,
+    requestController,
+    requestHref,
+    onOpenRequest,
+    onCloseRequest,
+    onRequestsReady,
+    historyResultHref,
+    checkResultHref,
+    onOpenCheck,
+    onOpenHistoryResult,
+    selectedPlanId = null,
+    selectedCheckId = null,
+    checkHref,
+    fetchCheck,
+    checkEvidenceApi,
+    onOpenPlan,
+    onClosePlan,
+    onDetailsReady,
     approvePlan,
     discardPlan,
     runSyncNow = async () => {
@@ -87,10 +122,15 @@
     clock = Date.now,
     lookupBypassActors,
   }: {
+    checkEvidenceApi?: Pick<import('../api').PanelApi, 'fetchSyncCheckObservations'>;
+    selectedCheckId?: string | null;
+    checkHref: (id: string) => string;
+    fetchCheck: (id: string) => Promise<SyncCheckResponse>;
     permissionsHref?: string | null;
     queueHref?: string | null;
     repositoryHref?: ((repository: string) => string) | null;
     targetId: string;
+    actorId?: string;
     lookupBypassActors?: BypassActorLookup;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
@@ -109,13 +149,33 @@
     renderFile: (targetId: string, input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
-    fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
+    fetchRequests?: import('../api').PanelApi['fetchSyncRequests'];
+    fetchOperation?: import('../api').PanelApi['fetchSyncOperation'];
+    requestController?: SyncRequestController;
+    selectedRequest?: { action: 'check' | 'dispatch'; requestKey: string } | null;
+    requestHref?: (action: 'check' | 'dispatch', key: string) => string;
+    onOpenRequest?: (action: 'check' | 'dispatch', key: string) => void;
+    onCloseRequest?: () => Promise<void>;
+    onRequestsReady?: (element: HTMLButtonElement) => void;
+    fetchHistory: (
+      targetId: string,
+      request: { limit: number; cursor?: string },
+    ) => Promise<Page<SyncPlanSummary>>;
+    historyResultHref: (id: string) => string;
+    checkResultHref: (checkId: string, planId: string) => string;
+    onOpenCheck: (id: string) => void;
+    onOpenHistoryResult: (id: string) => void;
+    selectedPlanId?: string | null;
+    onOpenPlan?: (planId: string, returnFocusId: string) => void;
+    onClosePlan?: () => Promise<void>;
+    onDetailsReady?: (element: HTMLElement) => void;
+    fetchPlan: (
+      targetId: string,
+      planId?: string,
+    ) => Promise<{ plan: SyncPlan | null; check?: import('../types').SyncCheckCapability }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
-    runSyncNow?: (
-      targetId: string,
-      input: { expected_revision: number; reason: string },
-    ) => Promise<SyncRunNowResponse>;
+    runSyncNow?: (targetId: string, input: SyncRunNowInput) => Promise<SyncRunNowResponse>;
     fetchStatus: (targetId: string) => Promise<SyncStatus>;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
@@ -166,9 +226,60 @@
   const planQuery = createQuery(() => ({
     queryKey: ['sync-plan', targetId],
     // Details can finish before the status request mounts their first consumer.
-    notifyOnChangeProps: ['data', 'error'],
+    notifyOnChangeProps: ['data', 'error', 'isPending', 'isFetching'],
+    retry: false,
     queryFn: () => fetchPlan(targetId),
   }));
+  const selectedPlanQuery = createQuery(() => ({
+    queryKey: ['sync-plan', targetId, selectedPlanId],
+    enabled: selectedPlanId !== null,
+    retry: false,
+    queryFn: () => fetchPlan(targetId, selectedPlanId ?? undefined),
+  }));
+  const inspectedPlanQuery = $derived(selectedPlanId === null ? planQuery : selectedPlanQuery);
+  let refreshingPlan = $state(false);
+  async function refreshInspectedPlan(): Promise<void> {
+    if (refreshingPlan) return;
+    refreshingPlan = true;
+    try {
+      await inspectedPlanQuery.refetch();
+    } finally {
+      refreshingPlan = false;
+    }
+  }
+  let inspectedPage: { focusStatus: () => void } | undefined = $state();
+  async function retryInspectedPlan(): Promise<void> {
+    const trigger = document.activeElement;
+    const requestedTarget = targetId;
+    const requestedPlan = selectedPlanId;
+    let movedFocus = false;
+    const trackFocus = (event: FocusEvent) => {
+      if (trigger?.isConnected && event.target !== trigger && event.target !== document.body)
+        movedFocus = true;
+    };
+    document.addEventListener('focusin', trackFocus);
+    try {
+      await refreshInspectedPlan();
+      await tick();
+    } finally {
+      document.removeEventListener('focusin', trackFocus);
+    }
+    if (
+      detailsVisible &&
+      targetId === requestedTarget &&
+      selectedPlanId === requestedPlan &&
+      trigger instanceof HTMLElement &&
+      !trigger.isConnected &&
+      !movedFocus
+    )
+      inspectedPage?.focusStatus();
+  }
+  const inspectedPlanProblem = $derived(syncResultProblem(inspectedPlanQuery.error));
+  const inspectedPlan = $derived(
+    selectedPlanId === null
+      ? (planQuery.data?.plan ?? null)
+      : (selectedPlanQuery.data?.plan ?? null),
+  );
   const statusQuery = createQuery(() => ({
     queryKey: ['sync-status', targetId],
     queryFn: () => fetchStatus(targetId),
@@ -176,14 +287,26 @@
   const plan = $derived(planQuery.data?.plan ?? null);
   const syncStatus = $derived(statusQuery.data ?? null);
   let detailsOpen = $state(false);
+  const detailsVisible = $derived(
+    detailsOpen || section === 'plan' || (section === 'history' && selectedPlanId !== null),
+  );
+  const feedbackReadError = $derived(
+    (!detailsVisible ? planQuery.error : null) ?? statusQuery.error,
+  );
   let detailsTrigger = $state<HTMLElement | null>(null);
   function closeDetails(): void {
     detailsOpen = false;
-    if (section === 'plan') onOpenSection('overview');
+    if (section === 'plan') {
+      if (selectedCheckId !== null) onOpenCheck(selectedCheckId);
+      else if (onClosePlan) void onClosePlan();
+      else onOpenSection('overview');
+    }
+    if (section === 'history') onOpenSection('history');
   }
   function openDetails(trigger: HTMLElement): void {
     detailsTrigger = trigger;
-    detailsOpen = true;
+    if (plan !== null && onOpenPlan !== undefined) onOpenPlan(plan.id, trigger.id);
+    else detailsOpen = true;
   }
   let filesContext = $state<SyncFilesContext | null>(null);
   /* The injected clock keeps catalogue examples deterministic while live views age. */
@@ -191,10 +314,42 @@
   useInterval(30_000, { callback: () => (nowMs = clock()) });
   let approving = $state(false);
   let discarding = $state(false);
-  let runningNow = $state(false);
-  let runNotice = $state('');
+  const localController = untrack(
+    () =>
+      new SyncRequestController(actorId, targetId, {
+        runSyncNow,
+        fetchOperation,
+        refresh: refreshSyncQueries,
+        storage: () => window.sessionStorage,
+      }),
+  );
+  const requests = $derived(requestController ?? localController);
+  const runningNow = $derived(requests.runningNow);
+  const runNotice = $derived(requests.runNotice);
+  const requestedCheckId = $derived(requests.requestedCheckId);
+  const requestedDispatchId = $derived(requests.requestedDispatchId);
+  const pendingRequest = $derived(requests.pendingRequest);
+  const requestStorageProblem = $derived(requests.requestStorageProblem);
+  const requestUncertain = $derived(requests.requestUncertain);
+  const requestCleanupPending = $derived(requests.requestCleanupPending);
+  const requestNotRecorded = $derived(requests.requestNotRecorded);
+  const confirmedRequest = $derived(requests.localAcceptance);
+  const requestNotice = $derived(
+    runningNow && pendingRequest && !requestUncertain && !requestCleanupPending
+      ? 'Sending your sync request…'
+      : runNotice,
+  );
+  let focusConfirmedRequest = false;
+  let viewError = $state<string | null>(null);
+  const error = $derived(requests.error ?? viewError);
+  function readRequestStorage(): void {
+    requests.readRequestStorage();
+  }
+  function finishRequestRecovery(): void {
+    requests.finishRequestRecovery();
+  }
+  onMount(readRequestStorage);
 
-  let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
   const documentError = $derived<Record<DocumentKind, string | null>>({
     settings: stageProblems.settings ?? editorStates.settings?.problem ?? null,
@@ -228,7 +383,7 @@
   });
 
   async function load(id: string): Promise<void> {
-    error = null;
+    viewError = null;
     try {
       const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedContext] =
         await Promise.all([
@@ -246,7 +401,7 @@
       filesContext = loadedContext;
       nowMs = clock();
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     }
   }
 
@@ -387,17 +542,22 @@
     }
   }
 
+  async function refreshSyncQueries(requestTargetId: string): Promise<void> {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['sync-plan', requestTargetId] }),
+      queryClient.invalidateQueries({ queryKey: ['sync-status', requestTargetId] }),
+    ]);
+  }
+
   async function onApprove(planId: string, digest: string): Promise<void> {
+    const requestTargetId = targetId;
     approving = true;
-    error = null;
+    viewError = null;
     try {
-      queryClient.setQueryData(
-        ['sync-plan', targetId],
-        await approvePlan(targetId, planId, digest),
-      );
-      await statusQuery.refetch();
+      await approvePlan(requestTargetId, planId, digest);
+      await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     } finally {
       approving = false;
     }
@@ -405,40 +565,28 @@
 
   /** Throwing a plan away asks nothing on GitHub - the next sweep recomputes. */
   async function onDiscard(planId: string): Promise<void> {
+    const requestTargetId = targetId;
     discarding = true;
-    error = null;
+    viewError = null;
     try {
-      await discardPlan(targetId, planId);
-      await Promise.all([planQuery.refetch(), statusQuery.refetch()]);
+      await discardPlan(requestTargetId, planId);
+      await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     } finally {
       discarding = false;
     }
   }
 
-  async function onRunNow(reason: string): Promise<void> {
-    runningNow = true;
-    error = null;
-    runNotice = '';
-    try {
-      const response = await runSyncNow(targetId, {
-        expected_revision: plan?.queue_item?.revision ?? 0,
-        reason,
-      });
-      if (response.plan !== undefined)
-        queryClient.setQueryData(['sync-plan', targetId], { plan: response.plan });
-      if (response.status === 'scan_queued')
-        runNotice = 'Checking repositories · changes will sync automatically';
-      if (response.status === 'plan_dispatched') runNotice = 'Sync queued for immediate dispatch';
-      if (response.status === 'approval_required')
-        runNotice = 'An earlier sync needs a one-time decision · open Review changes';
-      if (response.status === 'already_running') runNotice = 'Sync is already running';
-    } catch (cause) {
-      error = messageOf(cause);
-    } finally {
-      runningNow = false;
-    }
+  async function confirmRequest(trigger: HTMLButtonElement): Promise<void> {
+    const controller = requests;
+    await controller.confirmRequest(canControl, () => {
+      focusConfirmedRequest = trigger.ownerDocument.activeElement === trigger;
+    });
+  }
+
+  async function onRunNow(input: SyncRunNowIntent): Promise<void> {
+    await requests.submit(input);
   }
 
   function messageOf(cause: unknown): string {
@@ -462,16 +610,118 @@ Save publishes the desired state, and the service reconciles it automatically.
 Live plan and status queries share the shell's event invalidation and polling fallback.
 -->
 
-{#if section === 'overview' || section === 'plan'}
-  {#if error !== null}
-    <FormError message={error} />
+{#snippet requestFeedback()}
+  {#if requestStorageProblem || (pendingRequest && requestUncertain) || error !== null || feedbackReadError || requestNotice !== ''}
+    <div class="sync-feedback">
+      {#if requestStorageProblem}
+        <FormError message={requestStorageProblem} />
+        {#if pendingRequest === null}<Button tone="quiet" onclick={readRequestStorage}
+            >Retry browser storage</Button
+          >{/if}
+      {/if}
+      {#if pendingRequest && (requestUncertain || requestCleanupPending)}
+        <Callout role="status">
+          <div class="callout-copy">
+            <strong
+              >{requestCleanupPending
+                ? 'Finish local request recovery'
+                : pendingRequest.action === 'check'
+                  ? 'Check request needs confirmation'
+                  : 'Run request needs confirmation'}</strong
+            >
+            <p>
+              {requestCleanupPending
+                ? 'The server response is confirmed. Finish recovery to clear the saved browser record. This does not send the request again.'
+                : 'The previous request may already have been accepted. Recover it before starting another sync request.'}
+            </p>
+          </div>
+          {#snippet actions()}
+            {#if requestCleanupPending}<Button onclick={finishRequestRecovery}
+                >Finish recovery</Button
+              >
+            {:else if fetchOperation}<Button
+                aria-disabled={runningNow}
+                onclick={(event) => void confirmRequest(event.currentTarget)}
+                >{runningNow ? 'Confirming…' : 'Confirm request'}</Button
+              >
+              {#if requestNotRecorded && canControl}<Button
+                  disabled={runningNow}
+                  onclick={() => pendingRequest && void onRunNow(pendingRequest)}
+                  >Retry original request</Button
+                >{/if}
+            {:else if canControl}<Button
+                disabled={runningNow}
+                onclick={() => pendingRequest && void onRunNow(pendingRequest)}
+                >{runningNow
+                  ? 'Recovering…'
+                  : pendingRequest?.action === 'check'
+                    ? 'Recover check'
+                    : 'Recover run request'}</Button
+              >
+            {:else}<span>You need Admin or Owner access to recover this request.</span>{/if}
+          {/snippet}
+        </Callout>
+      {/if}
+      {#if error !== null}
+        <FormError message={error} />
+      {/if}
+      {#if feedbackReadError}<FormError message={messageOf(feedbackReadError)} />{/if}
+      {#if requestNotice !== ''}<div class="sync-run-notice" role="status">
+          <p>{requestNotice}</p>
+          {#if requests.relatedPlan && selectedPlanId !== requests.relatedPlan.id}<Link
+              href={historyResultHref(requests.relatedPlan.id)}>{requests.relatedPlan.label}</Link
+            >{/if}
+          {#if confirmedRequest && requestHref}<Link
+              href={requestHref(confirmedRequest.action, confirmedRequest.key)}
+              {@attach (element) => {
+                if (focusConfirmedRequest) {
+                  focusConfirmedRequest = false;
+                  (element as HTMLAnchorElement).focus();
+                }
+              }}>View request</Link
+            >{/if}
+          {#if requestedCheckId && !requestHref}<Link href={checkHref(requestedCheckId)}
+              >View check</Link
+            >{/if}
+          {#if requestedDispatchId && !requestHref}<Link
+              href={historyResultHref(requestedDispatchId)}>View accepted changes</Link
+            >{/if}
+        </div>{/if}
+    </div>
   {/if}
-  {#if planQuery.error || statusQuery.error}<FormError
-      message={messageOf(planQuery.error ?? statusQuery.error)}
-    />{/if}
-  {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
-  {#if syncStatus !== null}
+{/snippet}
+
+{#snippet pageFeedback()}
+  {#if !detailsVisible}{@render requestFeedback()}{/if}
+  {#if fetchRequests && actorId && requestHref && onOpenRequest}
+    {#key JSON.stringify([actorId, targetId])}
+      <SyncRequests
+        {actorId}
+        {targetId}
+        {nowMs}
+        {fetchRequests}
+        {requestHref}
+        {onOpenRequest}
+        onReady={onRequestsReady}
+      />
+    {/key}
+  {/if}
+{/snippet}
+
+{#if section === 'overview' || section === 'plan' || section === 'history'}
+  {#if section === 'history'}
+    {@render pageFeedback()}
+    <SyncHistory
+      {targetId}
+      {nowMs}
+      {fetchHistory}
+      resultHref={historyResultHref}
+      onOpenResult={onOpenHistoryResult}
+      onStatus={() => onOpenSection('overview')}
+    />
+  {:else if syncStatus !== null}
     <SyncOverview
+      feedback={pageFeedback}
       status={syncStatus}
       savedConfigs={canonicalConfigs}
       {permissionsHref}
@@ -487,21 +737,23 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {repositoryHref}
       {canControl}
       busy={runningNow}
-      onCheck={() => void onRunNow('Check sync from the status view')}
+      checkPending={pendingRequest !== null || requestStorageProblem !== null}
+      onCheck={() => void onRunNow({ action: 'check', reason: 'Check sync from the status view' })}
       onDetails={openDetails}
-      repositories={filesContext?.repositories ?? null}
+      {onDetailsReady}
       {sectionHref}
       {onOpenSection}
       onToggleKind={toggleKind}
       {dirtyControls}
       {readOnly}
     />
-  {:else if !statusQuery.error}
-    <p role="status">Loading sync status…</p>
+  {:else}
+    {@render pageFeedback()}
+    {#if !statusQuery.error}<p role="status">Loading sync status…</p>{/if}
   {/if}
   <Modal
     id="sync-details"
-    open={detailsOpen || section === 'plan'}
+    open={detailsVisible}
     title="Sync details"
     variant="inspector"
     returnFocus={detailsTrigger}
@@ -509,22 +761,44 @@ Live plan and status queries share the shell's event invalidation and polling fa
   >
     {#snippet headerExtra()}<Button
         tone="quiet"
-        aria-label="Close sync details"
-        onclick={closeDetails}>Close</Button
+        aria-label={selectedCheckId !== null ? 'Back to check' : 'Close sync details'}
+        onclick={closeDetails}>{selectedCheckId !== null ? 'Back to check' : 'Close'}</Button
       >{/snippet}
-    <SyncPlanPage
-      embedded
-      {plan}
-      {nowMs}
-      {readOnly}
-      {canControl}
-      {approving}
-      {discarding}
-      runNowBusy={runningNow}
-      onApprove={(planId, digest) => void onApprove(planId, digest)}
-      onDiscard={(planId) => void onDiscard(planId)}
-      onRunNow={(reason) => void onRunNow(reason)}
-    />
+    {#if detailsVisible}{@render requestFeedback()}{/if}
+    {#if inspectedPlanQuery.error || (refreshingPlan && inspectedPlanQuery.data === undefined)}
+      <ResultProblem
+        title={inspectedPlanProblem.title}
+        problem={inspectedPlanProblem.description}
+        onRetry={inspectedPlanProblem.retry ? () => void retryInspectedPlan() : undefined}
+        busy={inspectedPlanQuery.isFetching}
+      />
+    {:else if inspectedPlanQuery.isPending}
+      <p role="status">Loading sync result…</p>
+    {:else}
+      <SyncPlanPage
+        bind:this={inspectedPage}
+        embedded
+        plan={inspectedPlan}
+        {targetId}
+        checkCapability={selectedPlanId === null
+          ? planQuery.data?.check
+          : selectedPlanQuery.data?.check}
+        onOpenBlockingPlan={onOpenHistoryResult}
+        onOpenRunningCheck={onOpenCheck}
+        refreshing={refreshingPlan}
+        onRefresh={refreshInspectedPlan}
+        {nowMs}
+        {readOnly}
+        {canControl}
+        {approving}
+        {discarding}
+        runNowBlocked={pendingRequest !== null || requestStorageProblem !== null}
+        runNowBusy={runningNow}
+        onApprove={(planId, digest) => void onApprove(planId, digest)}
+        onDiscard={(planId) => void onDiscard(planId)}
+        onRunNow={(input) => void onRunNow(input)}
+      />
+    {/if}
   </Modal>
 {:else if section === 'labels'}
   {#key config === null}
@@ -605,7 +879,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {fileHref}
       {onOpenFile}
       onToggleEnabled={(wanted) => toggleKind(FILES, wanted)}
-      onChangeDocument={(document) => void stageDocument(FILES, document)}
+      onChangeDocument={(document) => stageDocument(FILES, document)}
       dirtyEnabled={dirtyControls.includes('sync.files.enabled')}
       dirtyDocument={dirtyControls.includes('sync.files.document')}
     />
@@ -634,15 +908,54 @@ Live plan and status queries share the shell's event invalidation and polling fa
   </section>
 {/if}
 
+{#if fetchOperation && selectedRequest}
+  {#key JSON.stringify([actorId, targetId, selectedRequest])}
+    <SyncOperationInspector
+      {actorId}
+      {targetId}
+      selection={selectedRequest}
+      {fetchOperation}
+      {checkHref}
+      resultHref={historyResultHref}
+      onClose={onCloseRequest ?? (() => onOpenSection('overview'))}
+    />
+  {/key}
+{/if}
+
+<SyncCheckInspector
+  {checkHref}
+  {actorId}
+  {checkEvidenceApi}
+  itemId={section === 'overview' ? selectedCheckId : null}
+  syncResultHref={(id) =>
+    selectedCheckId === null ? historyResultHref(id) : checkResultHref(selectedCheckId, id)}
+  {targetId}
+  {fetchCheck}
+  onClose={() => onOpenSection('overview')}
+/>
+
 <style>
   /* The settings page's plates, on the settings page's ground. */
   .sync-page :global(.plate) {
     background: var(--surface-base);
   }
 
+  .sync-feedback {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  /* Keep the response and its next step together, including inside inspectors. */
   .sync-run-notice {
     color: var(--text-secondary);
-    margin: var(--space-3) 0;
-    padding-block: var(--space-2);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .sync-run-notice p {
+    margin: 0;
+    min-width: 0;
   }
 </style>

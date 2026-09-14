@@ -492,6 +492,12 @@ var _ = Describe("Org sync [Unit]", func() {
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+			states, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Observation).To(Equal(orgsync.ObservationApplied))
+			Expect(states[0].ObservedDigest).To(Equal(states[0].AppliedDigest))
+			Expect(states[0].ObservedDigest).NotTo(BeEmpty())
 		})
 
 		// The digest is what stops the next reconcile asking GitHub about a
@@ -1076,6 +1082,10 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
+			states, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Observation).To(Equal(orgsync.ObservationMatched))
 		})
 
 		// The tree the commit is built from still has the retired path, so the
@@ -1112,6 +1122,10 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.createdPRs).To(HaveLen(1))
 			Expect(stub.createdPRs[0]).To(ContainSubstring("CONTRIBUTING.md"))
 			Expect(stub.createdPRs[0]).To(ContainSubstring(".renovaterc"))
+			states, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Observation).To(Equal(orgsync.ObservationProposed))
 		})
 
 		// The plan is computed against the default branch and the commit is
@@ -1235,7 +1249,7 @@ var _ = Describe("Org sync [Unit]", func() {
 		// is named after what the files should end up saying, so this answers
 		// for this change and a configuration that moves asks again.
 		DescribeTable("plans nothing more while a proposal is outstanding",
-			func(pulls string) {
+			func(pulls string, observation orgsync.Observation) {
 				target := grantContents()
 				configureKind(target, orgsync.KindFiles, contributing)
 				stub.branchPRs = pulls
@@ -1252,11 +1266,12 @@ var _ = Describe("Org sync [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(state).To(HaveLen(1))
 				Expect(state[0].Kind).To(Equal(orgsync.KindFiles))
+				Expect(state[0].Observation).To(Equal(observation))
 			},
 
-			Entry("one still open", `[{"number":9,"state":"open"}]`),
+			Entry("one still open", `[{"number":9,"state":"open"}]`, orgsync.ObservationProposed),
 			Entry("one the repository closed",
-				`[{"number":9,"state":"closed","merged_at":null}]`),
+				`[{"number":9,"state":"closed","merged_at":null}]`, orgsync.ObservationDeclined),
 		)
 
 		// A repository with delete_branch_on_merge took the branch away the
@@ -1365,6 +1380,10 @@ var _ = Describe("Org sync [Unit]", func() {
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(applied.State).To(Equal(orgsync.PlanApplied))
+			states, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Observation).To(Equal(orgsync.ObservationMatched))
 		})
 
 		// Nothing here removes a branch. GitHub's delete has no

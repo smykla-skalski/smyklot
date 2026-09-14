@@ -65,9 +65,9 @@ async function waitForFastMotion(page: Page, maximumDuration: number): Promise<v
 
 beforeAll(async () => {
   panel = await startPanel();
-  viewer = await panel.browser.newPage();
-  actor = await panel.browser.newPage();
-  overview = await panel.browser.newPage();
+  viewer = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+  actor = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+  overview = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
   await Promise.all([
     visit(viewer, `${panel.origin}/root/queue`, { ready: ROW }),
     visit(actor, `${panel.origin}/root/queue`, { ready: ROW }),
@@ -92,7 +92,7 @@ describe('the general Queue live stream [Integration]', () => {
     await summary.getByText('Scan for new commands', { exact: true }).waitFor();
     /* The queue's own sentence, said the same way here as on the queue page: a wait,
        then when the work runs. The console used to name the state instead. */
-    await summary.getByText(/GitHub rate limit; retry scheduled · tries again/).waitFor();
+    await summary.getByText(/GitHub rate limit; retry scheduled · retry can start/).waitFor();
     expect(await summary.locator('[data-queue-item]').count()).toBe(3);
   });
 

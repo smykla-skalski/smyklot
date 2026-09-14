@@ -15,7 +15,8 @@
 </script>
 
 <script lang="ts">
-  import { queueLine, words } from '#lib/queue-words.js';
+  import { queueRepositoryName } from '#lib/queue-names.js';
+  import { queueActionLabel, queueLine, words } from '#lib/queue-words.js';
   import type { QueueActionType } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
   import { onMount } from 'svelte';
@@ -88,8 +89,8 @@
    */
   function subject(item: QueueItem): string | null {
     const where = workspace?.(item) ?? null;
-    const repository = item.repository_name?.split('/').at(-1);
-    if (repository === undefined || repository === '') return where;
+    const repository = queueRepositoryName(item, true);
+    if (repository === null) return where;
     const pull = item.kind === 'pending_ci' ? item.details?.pull_request : undefined;
     const said = pull === undefined ? repository : `${repository} #${pull}`;
 
@@ -129,14 +130,6 @@
     return 'neutral';
   }
 
-  function actionLabel(action: QueueActionType): string {
-    if (action === 'next_window') return 'Next window';
-    if (action === 'schedule_at') return 'Schedule exact time';
-    if (action === 'set_priority') return 'Change priority';
-    if (action === 'cancel') return 'Cancel work';
-    return 'Run now';
-  }
-
   function actionItems(item: QueueItem): ActionMenuItem[] {
     return (item.actions ?? [])
       .filter((action) => action !== 'run_now')
@@ -144,7 +137,7 @@
         (action) =>
           ({
             id: action,
-            label: actionLabel(action),
+            label: queueActionLabel(action, item),
             description:
               action === 'next_window'
                 ? "Keep the job's hours"
@@ -277,7 +270,9 @@ from the wall clock cannot be photographed.
                     </Button>
                   {/if}
                   {#if item.actions?.includes('run_now')}
-                    <Button onclick={() => onAction(item, 'run_now')}>Run now</Button>
+                    <Button onclick={() => onAction(item, 'run_now')}
+                      >{queueActionLabel('run_now', item)}</Button
+                    >
                   {/if}
                   {#if actionItems(item).length > 0}
                     <ActionMenu

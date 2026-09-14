@@ -15,18 +15,6 @@ import (
 
 const digestInputFormatting = "formatting"
 
-func repositoryFormattingPolicy(
-	base config.FormattingPolicy,
-	targetPatch config.Patch,
-	repository storage.Repository,
-) config.FormattingPolicy {
-	policy := applyFormattingLayer(base, targetPatch.Formatting)
-	if !repository.IgnoreRepositoryFile {
-		policy = applyFormattingLayer(policy, repository.ConfigFilePatch.Formatting)
-	}
-	return applyFormattingLayer(policy, repository.ConfigPatch.Formatting)
-}
-
 // CurrentScopeDigest recomputes every setting that can affect planned bytes.
 // Approval and execution use it to reject work created from an older scope.
 func (s *Engine) CurrentScopeDigest(ctx context.Context, targetID string) (string, error) {
@@ -54,17 +42,6 @@ func scopeDigest(
 	return orgsync.DigestScopeWithInputs(configs, held.overrides, []orgsync.DigestInput{{
 		Name: digestInputFormatting, Digest: formattingScopeDigest(formatting, held),
 	}})
-}
-
-func applyFormattingLayer(
-	base config.FormattingPolicy,
-	patch *config.FormattingPatch,
-) config.FormattingPolicy {
-	if patch == nil {
-		return base
-	}
-
-	return config.ApplyFormattingPatch(base, *patch)
 }
 
 type formattingScopeState struct {

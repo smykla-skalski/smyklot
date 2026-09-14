@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstallationPrompt from '#lib/components/InstallationPrompt.svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
@@ -23,8 +24,22 @@
     saveWorkspaceDrafts,
     workspaceDraftValidation,
   } from '#lib/workspace-settings-save.js';
-  import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
-  import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
+  import {
+    rebaseRootSettingsConflict,
+    rootSettingsDraftValidation,
+    saveRootSettingsDraft,
+  } from '#lib/root-settings-save.js';
+  import { revealControl } from '#lib/reveal-control.js';
+  import {
+    runtimeFieldConflicts,
+    runtimeConflictValue,
+    type RuntimeFieldConflict,
+    type RuntimeConflictChoice,
+  } from '#lib/runtime-conflicts.js';
+  import { sameSettingsJson } from '#lib/settings-draft-storage.js';
+  import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+  import Select from '#lib/components/Select.svelte';
+  import { RUNTIME_RESOURCE, ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import {
     setSettingsDraftRegistry,
     SettingsDraftRegistry,
@@ -38,7 +53,7 @@
     fileDraftValidationSnapshot,
     setFileDraftValidation,
   } from '#lib/file-draft-validation.js';
-  import type { PanelTarget } from '#lib/types.js';
+  import type { PanelTarget, RootRuntimeSettings } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
     SYNC_SECTION_LABELS,
@@ -122,6 +137,13 @@
   let attentionNotice = $state<'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
+  let runtimeConflictReview = $state<{
+    latest: RootRuntimeSettings;
+    conflicts: RuntimeFieldConflict[];
+    choices: Record<string, RuntimeConflictChoice>;
+    draft: import('#lib/settings-draft-storage.js').SettingsJson;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
   let selectedSaveProblemControl = $state<SettingsDirtyControl | null>(null);
   const viewerAccountId = $derived(session.viewer?.account.id ?? null);
   const settingsDraftsReady = $derived(
@@ -142,8 +164,11 @@
       .toSorted((left, right) => left.changedAt - right.changedAt),
   );
   const rootSettingsOperation = $derived(settingsDraftRegistry.operation(ROOT_SETTINGS_SCOPE));
+  const rootDraftValidation = $derived(rootSettingsDraftValidation(settingsDraftRegistry));
   const rootValidationProblem = $derived(
-    settingsDraftRegistry.validationProblem(ROOT_SETTINGS_SCOPE),
+    settingsDraftRegistry.validationProblem(ROOT_SETTINGS_SCOPE) ??
+      rootDraftValidation?.problem ??
+      null,
   );
   const rootSettingsConflict = $derived(settingsDraftRegistry.hasConflicts(ROOT_SETTINGS_SCOPE));
   const rootProblemControl = $derived(rootDirtyControls[0]);
@@ -538,12 +563,40 @@
     ]);
   }
 
+  function applyRuntimeConflictChoices(): void {
+    const review = runtimeConflictReview;
+    if (review === null || review.conflicts.some((field) => review.choices[field.id] === undefined))
+      return;
+    const current = settingsDraftRegistry.resource(RUNTIME_RESOURCE);
+    if (current === null || !sameSettingsJson(current.value, review.draft)) {
+      runtimeConflictReview = null;
+      void updateRootSettingsDraft();
+      return;
+    }
+    if (!rebaseRootSettingsConflict(settingsDraftRegistry, review.latest, review.choices)) return;
+    queryClient.setQueryData(['root-settings'], review.latest);
+    settingsDraftRegistry.dismissProblem(ROOT_SETTINGS_SCOPE);
+    runtimeConflictReview = null;
+  }
+
   async function updateRootSettingsDraft(): Promise<void> {
     if (resolvingSettingsConflict) return;
     resolvingSettingsConflict = true;
     await tick();
     try {
       const latest = await api.fetchRootRuntimeSettings();
+      const conflicts = runtimeFieldConflicts(settingsDraftRegistry, latest);
+      if (conflicts.length > 0) {
+        runtimeConflictReview = {
+          latest,
+          conflicts,
+          choices: {},
+          draft: settingsDraftRegistry.resource(RUNTIME_RESOURCE)!.value,
+          returnFocus:
+            document.activeElement instanceof HTMLElement ? document.activeElement : null,
+        };
+        return;
+      }
       queryClient.setQueryData(['root-settings'], latest);
       rebaseRootSettingsConflict(settingsDraftRegistry, latest);
       settingsDraftRegistry.resolveExternalConflicts(ROOT_SETTINGS_SCOPE);
@@ -571,8 +624,45 @@
     settingsDraftRegistry.dismissNotice(ROOT_SETTINGS_SCOPE);
   }
 
-  function openRootSettingsProblem(): void {
-    session.selectRootRuntimeSection('settings');
+  async function openRootSettingsProblem(): Promise<void> {
+    await goto(session.rootRuntimeHref('settings'));
+    try {
+      await queryClient.ensureQueryData({
+        queryKey: ['root-settings'],
+        queryFn: api.fetchRootRuntimeSettings,
+      });
+    } catch {
+      // The settings page exposes its read error; no input exists to focus yet.
+      return;
+    }
+    await tick();
+    const issue = settingsDraftRegistry.validationIssue(ROOT_SETTINGS_SCOPE);
+    const field = issue?.controlId.replace(/^runtime\.(?:bot_config\.)?/, '');
+    if (field?.startsWith('formatting.')) {
+      const group = field.split('.')[1];
+      document
+        .querySelector<HTMLInputElement>(
+          `.root-settings input[name="formatting-group-runtime-root"][value="${CSS.escape(group ?? '')}"]`,
+        )
+        ?.click();
+      await tick();
+    }
+    const row =
+      field === undefined
+        ? null
+        : document.querySelector<HTMLElement>(
+            `.root-settings [data-settings-field="${CSS.escape(field)}"]`,
+          );
+    const invalid =
+      row?.querySelector<HTMLElement>(
+        'input:not([type="radio"]):not([type="hidden"]):not(:disabled), textarea:not(:disabled), select:not(:disabled), input[type="radio"]:checked:not(:disabled)',
+      ) ??
+      row?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)') ??
+      document.querySelector<HTMLElement>('.root-settings [aria-invalid="true"]');
+    if (invalid !== null) {
+      invalid.focus({ preventScroll: true });
+      revealControl(row ?? invalid);
+    }
   }
 
   async function updateSelectedSettingsDraft(): Promise<void> {
@@ -762,6 +852,7 @@
           rulesets: 'branch',
           files: 'file',
           plan: 'plan',
+          history: 'history',
         } as const;
         return {
           id: `sync-${section}`,
@@ -905,7 +996,7 @@
       label: 'Workspaces',
       icon: 'book',
       href: session.rootHrefFor('workspaces'),
-      active: !session.isPersonal && session.rootValue === 'workspaces',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'workspaces',
       dirty: dirtyTargetIds.size > 0,
     },
     {
@@ -1174,17 +1265,7 @@
     <SignInPage {api} {build} ended={session.sessionEnded} failed={signInFailure} {returnTo} />
   {:else if session.awaitingWorkspace}
     <NightPage title="No workspaces" documentTitle="No workspaces" {build} size="compact">
-      <div class="install-prompt">
-        <span class="install-mark" aria-hidden="true">+</span>
-        <div class="install-copy">
-          <strong>Install Smyklot to begin</strong>
-          <p>
-            Install the Smyklot GitHub App on an organization or personal account, then reload this
-            panel
-          </p>
-        </div>
-        <Button tone="signal" onclick={() => void session.load()}>Reload panel</Button>
-      </div>
+      <InstallationPrompt {api} reload={() => session.load()} />
     </NightPage>
   {:else}
     <a class="skip-link" href="#panel-content">Skip to panel content</a>
@@ -1358,7 +1439,7 @@
             onDiscard={discardRootSettings}
             onResolveConflict={() => void updateRootSettingsDraft()}
             onDismiss={dismissRootSettingsNotice}
-            onOpenProblem={openRootSettingsProblem}
+            onOpenProblem={() => void openRootSettingsProblem()}
           />
         {/if}
       </div>
@@ -1366,10 +1447,78 @@
   {/if}
   <!-- The shell's, not a page's: a change made in a dialog is reported once the dialog
        has closed, and a receipt a page owned would leave with the page. -->
+  {#if runtimeConflictReview !== null}
+    <ConfirmDialog
+      id="runtime-conflict-review"
+      open
+      title="Choose which values to keep"
+      description="These settings changed in another session. Choose each value for your draft. Other edits are kept. Nothing is saved yet."
+      returnFocus={runtimeConflictReview.returnFocus}
+      onClose={() => (runtimeConflictReview = null)}
+      onConfirm={applyRuntimeConflictChoices}
+      confirmLabel="Update draft"
+      confirmDisabled={runtimeConflictReview.conflicts.some(
+        (field) => runtimeConflictReview!.choices[field.id] === undefined,
+      )}
+    >
+      <div class="form-stack">
+        {#each runtimeConflictReview.conflicts as field (field.id)}
+          <div class="form-field">
+            <label class="form-label" for={`conflict-${field.id}`}>{field.label}</label>
+            <dl id={`conflict-values-${field.id}`} class="runtime-conflict-values">
+              <div>
+                <dt>My draft</dt>
+                <dd>{runtimeConflictValue(field.id, field.draft)}</dd>
+              </div>
+              <div>
+                <dt>Saved in another session</dt>
+                <dd>{runtimeConflictValue(field.id, field.saved)}</dd>
+              </div>
+            </dl>
+            <Select
+              id={`conflict-${field.id}`}
+              aria-describedby={`conflict-values-${field.id}`}
+              value={runtimeConflictReview.choices[field.id]}
+              placeholder="Choose a value"
+              options={[
+                {
+                  value: 'draft',
+                  label: 'My draft',
+                },
+                {
+                  value: 'saved',
+                  label: 'Saved in another session',
+                },
+              ]}
+              onValueChange={(value) => {
+                if (runtimeConflictReview !== null && (value === 'draft' || value === 'saved'))
+                  runtimeConflictReview.choices[field.id] = value;
+              }}
+            />
+          </div>
+        {/each}
+      </div>
+    </ConfirmDialog>
+  {/if}
   <MutationReceipt />
 </QueryClientProvider>
 
 <style>
+  .runtime-conflict-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+  }
+  .runtime-conflict-values dt {
+    font-weight: 600;
+  }
+  .runtime-conflict-values dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .shell-notification-layer {
     inset-block-start: var(--space-4);
     inset-inline-end: var(--space-4);
@@ -1415,32 +1564,5 @@
   }
   .skeleton-row {
     height: 3.25rem;
-  }
-  .install-prompt {
-    display: grid;
-    gap: var(--space-4);
-    justify-items: center;
-    text-align: center;
-  }
-  .install-copy strong {
-    display: block;
-    font-size: 1rem;
-  }
-  .install-copy p {
-    color: var(--text-muted);
-    margin: var(--space-2) 0 0;
-    max-width: var(--measure-note);
-  }
-  .install-mark {
-    align-items: center;
-    background: var(--brand-action-tint);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 34%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--brand-action);
-    display: inline-flex;
-    font: 650 1.5rem/1 var(--sans);
-    height: 3rem;
-    justify-content: center;
-    width: 3rem;
   }
 </style>

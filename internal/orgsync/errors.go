@@ -3,6 +3,9 @@ package orgsync
 import "errors"
 
 var (
+	// ErrStaleCheck refuses an expired or already-linked scan occurrence.
+	ErrStaleCheck = errors.New("sync check no longer owns plan creation")
+
 	// ErrInvalidConfig is configuration that could never be applied. It is
 	// returned where somebody wrote it, so the answer arrives beside the field
 	// rather than in a sweep log an hour later.

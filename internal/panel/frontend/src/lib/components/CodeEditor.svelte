@@ -187,19 +187,22 @@
       caretColor: 'var(--text-primary)',
       padding: '0',
     },
+    '.cm-content ::selection, .cm-content::selection': {
+      color: 'var(--code-selection-ink)',
+      backgroundColor: 'var(--code-selection-bg)',
+    },
     '.cm-line': {
       padding: '0 var(--space-3) 0 0',
     },
     '.cm-gutters': {
       background: 'transparent',
       border: 'none',
-      color: 'var(--text-muted)',
+      color: 'var(--code-gutter)',
     },
     '.cm-lineNumbers .cm-gutterElement': {
       boxSizing: 'border-box',
       fontVariantNumeric: 'tabular-nums',
       minWidth: '3rem',
-      opacity: '0.6',
       padding: '0 0.75rem',
       userSelect: 'none',
     },

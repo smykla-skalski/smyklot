@@ -6,14 +6,22 @@
     content,
     panelHref,
     signInHref,
+    invitationHref = null,
   }: {
     content: ErrorContent;
     panelHref: string;
     signInHref: string;
+    invitationHref?: string | null;
   } = $props();
 
   const actionHref = $derived(
-    content.action === null ? null : content.action.kind === 'sign-in' ? signInHref : panelHref,
+    content.action === null
+      ? null
+      : content.action.kind === 'invitation'
+        ? invitationHref
+        : content.action.kind === 'sign-in'
+          ? signInHref
+          : panelHref,
   );
 </script>
 
@@ -45,10 +53,13 @@ means, and the one thing worth doing about it.
   <p class="error-lead">{content.lead}</p>
   <p class="error-note">{content.note}</p>
   {#if content.action !== null && actionHref !== null}
+    <!-- Server error metadata belongs to this document. A recovery link must
+         request a fresh document rather than retaining the failed layout. -->
     <p class="error-action">
       <Button
         tone="signal"
         href={actionHref}
+        data-sveltekit-reload
         rel={content.action.kind === 'sign-in' ? 'nofollow' : undefined}
       >
         {content.action.label}

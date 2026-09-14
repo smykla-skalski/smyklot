@@ -7,7 +7,9 @@
     value,
     label,
     onSelect,
+    disabled = false,
   }: {
+    disabled?: boolean;
     value: number;
     label: string;
     onSelect: (value: number) => void;
@@ -27,13 +29,14 @@ much as will load".
 
 Its numeric answer is checked against the supported page sizes before it leaves the component.
 
-Belongs to a collection that has been counted. A table that loads on a cursor has no
-total and no pages, so it has no size to choose either.
+Used by numbered and cursor pagination. Changing the size resets the current
+pagination boundary so pages cannot overlap or skip rows.
 -->
 
 <span class="page-size">
   <Select
     {value}
+    {disabled}
     aria-label={label}
     onValueChange={select}
     options={PAGE_SIZES.map((size) => ({ value: size, label: String(size) }))}

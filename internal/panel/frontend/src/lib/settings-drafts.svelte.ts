@@ -305,6 +305,9 @@ export class SettingsDraftRegistry {
         saved: cloneSettingsJson(previous?.saved ?? change.saved),
         value: cloneSettingsJson(change.value),
         changedAt: at,
+        ...(previous?.serverProblem !== undefined && sameSettingsJson(previous.value, change.value)
+          ? { serverProblem: previous.serverProblem }
+          : {}),
       };
     }
     const candidate: ResourceState = {
@@ -390,6 +393,15 @@ export class SettingsDraftRegistry {
     this.validationProblems = validationProblems;
   }
 
+  serverProblem(scope: SettingsScope, controlId: string): string | null {
+    for (const state of this.dirtyStates(scope)) {
+      const control = state.controls[controlId];
+      if (control !== undefined && !sameSettingsJson(control.saved, control.value))
+        return control.serverProblem ?? null;
+    }
+    return null;
+  }
+
   validationProblem(scope: SettingsScope): string | null {
     return this.validationIssue(scope)?.problem ?? null;
   }
@@ -397,6 +409,14 @@ export class SettingsDraftRegistry {
   /** Keep a message paired with its owner so navigation cannot point at another draft. */
   validationIssue(scope: SettingsScope): { controlId: string; problem: string } | null {
     const problems = this.validationProblems[settingsScopeKey(scope)];
+    const rejected = this.dirtyStates(scope)
+      .flatMap((state) => Object.values(state.controls))
+      .filter(
+        (control) =>
+          control.serverProblem !== undefined && !sameSettingsJson(control.saved, control.value),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+    if (rejected !== undefined) return { controlId: rejected.id, problem: rejected.serverProblem! };
     if (problems === undefined) return null;
     const first = Object.keys(problems).sort()[0];
     return first === undefined ? null : { controlId: first, problem: problems[first]! };
@@ -590,6 +610,7 @@ export class SettingsDraftRegistry {
     attempt: SettingsSaveAttempt,
     problem: string,
     conflicts: readonly SettingsSaveConflict[] = [],
+    rejectedControls: readonly { resource: SettingsResource; controlId: string }[] = [],
   ): boolean {
     if (!this.ownsAttempt(attempt)) return false;
     this.syncFromStorage();
@@ -615,6 +636,31 @@ export class SettingsDraftRegistry {
       resources[key] = next;
       records[key] = activeRecord(key, next, this.nextVersion(key));
     }
+    for (const rejected of rejectedControls) {
+      const key = settingsResourceKey(rejected.resource);
+      const current = resources[key];
+      const submitted = attempt.entries
+        .find((entry) => entry.resourceKey === key)
+        ?.controls.find((control) => control.id === rejected.controlId);
+      const control = current?.controls[rejected.controlId];
+      if (
+        current === undefined ||
+        submitted === undefined ||
+        control === undefined ||
+        !sameSettingsJson(control.value, submitted.value) ||
+        sameSettingsJson(control.saved, control.value)
+      )
+        continue;
+      const next = {
+        ...current,
+        controls: {
+          ...current.controls,
+          [rejected.controlId]: { ...control, serverProblem: problem },
+        },
+      };
+      resources[key] = next;
+      records[key] = activeRecord(key, next, this.nextVersion(key));
+    }
     this.resources = resources;
     this.records = records;
     this.finishAttempt(attempt, problem, null);
@@ -628,6 +674,7 @@ export class SettingsDraftRegistry {
     latestBase: SettingsJson,
     savedControls: Readonly<Record<string, SettingsJson>>,
     rebasedDraft?: SettingsJson,
+    rebasedControls?: Readonly<Record<string, SettingsJson>>,
   ): boolean {
     assertRevision(expectedRevision);
     this.syncFromStorage();
@@ -638,6 +685,14 @@ export class SettingsDraftRegistry {
     }
     const controls = completeSavedProjection(current, savedControls);
     if (controls === null) return false;
+    if (rebasedControls !== undefined) {
+      for (const [id, control] of Object.entries(controls)) {
+        const value = rebasedControls[id];
+        if (value === undefined) return false;
+        if (!sameSettingsJson(control.value, value)) delete control.serverProblem;
+        control.value = cloneSettingsJson(value);
+      }
+    }
 
     const rebased: ResourceState = {
       ...current,

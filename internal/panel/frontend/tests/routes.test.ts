@@ -75,10 +75,18 @@ describe('panel routes', () => {
       view: 'sync',
       sync: 'labels',
     });
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check/scan%3A123')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'overview',
+      syncCheck: 'scan:123',
+    });
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check/a/b')).toBeNull();
     // `overview` is never written, so an address naming it does not resolve.
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/overview')).toBeNull();
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan/extra')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan/extra/extra')).toBeNull();
   });
 
   it('parses Queue pages and refuses non-pages', () => {
@@ -484,4 +492,46 @@ describe('history sections are addressable', () => {
       }),
     ).toBe(`${basePath}/root/workspaces/acme/history/failures`);
   });
+});
+
+it('round trips a retained sync result address', () => {
+  const route = { account: 'acme', view: 'sync', sync: 'plan', syncPlan: 'run-42' } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
+});
+
+it('round trips a history result without losing its return section', () => {
+  const route = { account: 'acme', view: 'sync', sync: 'history', syncPlan: 'run-42' } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
+});
+
+it('retains both the originating check and exact result across address round trips', () => {
+  const route = {
+    account: 'acme',
+    view: 'sync',
+    sync: 'plan',
+    syncCheck: 'scan:original',
+    syncPlan: 'plan:original',
+  } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result')).toBeNull();
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/b/extra')).toBeNull();
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/%20')).toBeNull();
+});
+
+it('preserves exact sync request identity and rejects malformed selections', () => {
+  expect(parsePanelRoute('', '/workspace/acme/sync/request/check/key%2Fwith%20space')).toEqual({
+    account: 'acme',
+    view: 'sync',
+    sync: 'overview',
+    syncRequest: { action: 'check', requestKey: 'key/with space' },
+  });
+  for (const path of [
+    'request',
+    'request/check',
+    'request/retry/key',
+    'request/check/%20',
+    'request/check/a/b',
+    'request/check/%ZZ',
+  ])
+    expect(parsePanelRoute('', `/workspace/acme/sync/${path}`)).toBeNull();
 });

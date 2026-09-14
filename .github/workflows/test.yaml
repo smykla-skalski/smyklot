@@ -309,6 +309,11 @@ jobs:
               tests/browser/text-clipping.test.ts
               tests/browser/bypass-identities.test.ts
               tests/browser/signed-out-layout.test.ts
+              tests/browser/installation.test.ts
+              tests/browser/queue-occurrences.test.ts
+              tests/browser/queue-names.test.ts
+              tests/browser/queue-exact-time.test.ts
+              tests/browser/required-reasons.test.ts
           # 319s in the reference run
           - area: group-2
             files: >-
@@ -341,6 +346,8 @@ jobs:
               tests/browser/dictionary.test.ts
               tests/browser/file-validation-lifetime.test.ts
               tests/browser/sync-drafts.test.ts
+              tests/browser/shared-file-lifecycle.test.ts
+              tests/browser/sync-observations.test.ts
               tests/browser/segmented-control.test.ts
               tests/browser/access-navigation.test.ts
           # 319s in the reference run

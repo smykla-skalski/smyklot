@@ -16,14 +16,16 @@ const (
 )
 
 type Delivery struct {
-	Event   string
-	ID      string
-	Source  Source
-	Payload []byte
-	Key     string
-	ClaimID int64
-	Attempt int
-	Logger  *slog.Logger
+	// SourceOrder preserves the original acceptance order across new executions.
+	SourceOrder int64
+	Event       string
+	ID          string
+	Source      Source
+	Payload     []byte
+	Key         string
+	ClaimID     int64
+	Attempt     int
+	Logger      *slog.Logger
 }
 
 type Outcome string

@@ -11,6 +11,41 @@ describe('FormattingEditor [Component]', () => {
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
+  it('describes rejected numeric and radio values without creating client errors', async () => {
+    const onValidity = vi.fn();
+    const { rerender } = render(FormattingEditor, {
+      patch: { common: { indent_width: 4 }, preset: 'conventional' },
+      inherited: defaultFormattingPolicy(),
+      scope: 'runtime',
+      idPrefix: 'server',
+      onChange: vi.fn(),
+      onValidity,
+      serverProblems: {
+        'formatting.common.indent_width': 'Indent width was rejected',
+        'formatting.preset': 'Preset was rejected',
+      },
+    });
+    const amount = screen.getByLabelText('Indent Width');
+    const radio = within(screen.getByRole('group', { name: 'Formatting preset' })).getByRole(
+      'radio',
+      { name: 'Conventional' },
+    );
+    for (const [control, text] of [
+      [amount, 'Indent width was rejected'],
+      [radio, 'Preset was rejected'],
+    ] as const) {
+      const ids = control.getAttribute('aria-describedby')!.split(' ');
+      expect(ids.map((id) => document.getElementById(id)?.textContent).join(' ')).toContain(text);
+    }
+    expect(amount.getAttribute('aria-invalid')).toBe('true');
+    expect(onValidity).toHaveBeenLastCalledWith(true);
+    await rerender({ serverProblems: {} });
+    expect(amount.getAttribute('aria-invalid')).toBeNull();
+    expect(radio.getAttribute('aria-invalid')).toBeNull();
+    expect(amount.getAttribute('aria-describedby')).not.toContain('server-problem');
+    expect(radio.getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('uses the shared content-width file type control', () => {
     render(FormattingEditor, {
       patch: {},
@@ -232,6 +267,29 @@ describe('FormattingEditor [Component]', () => {
       expect(onChange).toHaveBeenLastCalledWith(savedPatch, 'formatting.common.indent_width');
     },
   );
+
+  it('explicitly pins an inherited number without changing its value', async () => {
+    const onChange = vi.fn();
+    render(FormattingEditor, {
+      patch: { common: { line_width: 120 } },
+      inherited: defaultFormattingPolicy(),
+      scope: 'runtime',
+      idPrefix: 'equal-number',
+      onChange,
+    });
+    await fireEvent.input(screen.getByLabelText('Indent Width'), { target: { value: '' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Override Indent Width at 2' }));
+    expect(screen.getByLabelText('Indent Width').getAttribute('aria-invalid')).toBeNull();
+    expect(onChange).toHaveBeenLastCalledWith(
+      { common: { line_width: 120, indent_width: 2 } },
+      'formatting.common.indent_width',
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Stop overriding Indent Width' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      { common: { line_width: 120 } },
+      'formatting.common.indent_width',
+    );
+  });
 
   it('keeps a numeric override when restoring inheritance would change its displayed value', async () => {
     const onChange = vi.fn();

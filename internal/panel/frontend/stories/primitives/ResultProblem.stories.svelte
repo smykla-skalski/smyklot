@@ -31,3 +31,12 @@
 <Story name="Over content" args={{ overContent: true }} />
 
 <Story name="Trying again" args={{ busy: true }} />
+
+<Story
+  name="Access required"
+  args={{
+    title: 'You cannot view these changes',
+    problem: 'Ask a workspace administrator to review your access',
+    onRetry: undefined,
+  }}
+/>

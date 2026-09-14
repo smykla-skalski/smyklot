@@ -516,6 +516,11 @@ func writeValue(out *strings.Builder, value reflect.Value) {
 		}
 	}
 
+	if behavior, ok := value.Interface().(storage.RuntimeBehavior); ok {
+		writeValue(out, reflect.ValueOf(behavior.Patch()))
+		return
+	}
+
 	switch value.Kind() {
 	case reflect.Pointer, reflect.Interface:
 		if value.IsNil() {

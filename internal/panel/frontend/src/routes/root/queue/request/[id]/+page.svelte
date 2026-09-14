@@ -8,11 +8,11 @@
   const session = getPanelSession();
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <QueueRequest
     api={session.api}
     requestId={params.id}
     queueHref={session.queueHref()}
     onBack={() => session.selectRootQueueSection('active')}
   />
-</section>
+</div>

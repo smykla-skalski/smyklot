@@ -262,6 +262,7 @@ export function cloneControl(control: StoredSettingsControl): StoredSettingsCont
     saved: cloneSettingsJson(control.saved),
     value: cloneSettingsJson(control.value),
     changedAt: control.changedAt,
+    ...(control.serverProblem === undefined ? {} : { serverProblem: control.serverProblem }),
   };
 }
 

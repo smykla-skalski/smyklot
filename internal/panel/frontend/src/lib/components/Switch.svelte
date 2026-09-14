@@ -1,6 +1,8 @@
 <script lang="ts">
   const {
     checked,
+    invalid = false,
+    descriptionId,
     label,
     word,
     bare = false,
@@ -8,6 +10,8 @@
     onToggle,
   }: {
     checked: boolean;
+    invalid?: boolean;
+    descriptionId?: string;
     /** The accessible name; required because the track alone says nothing. */
     label: string;
     /** An optional visible word beside the track ("Syncing"). */
@@ -49,6 +53,8 @@ that safe.
     {checked}
     {disabled}
     aria-label={label}
+    aria-invalid={invalid || undefined}
+    aria-describedby={descriptionId}
     onchange={(event) => onToggle(event.currentTarget.checked)}
   />
   <span class="switch-track"></span>

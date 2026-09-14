@@ -13,14 +13,14 @@
     files: { one: 'shared file', changes: 'shared file changes' },
   };
 
-  /** The word beside a kind's switch: what it is doing, not what it would do. */
+  /** The enabled policy, independent of current queue activity or outcome. */
   export function syncSwitchWord(enabled: boolean): string {
-    return enabled ? 'Syncing' : 'Paused';
+    return enabled ? 'Sync enabled' : 'Sync disabled';
   }
 
   /** What pressing the switch would do, for the reader who cannot see the track. */
   export function syncSwitchLabel(kind: SyncKind, enabled: boolean): string {
-    return `${enabled ? 'Pause' : 'Resume'} ${KIND_WORDS[kind].one} syncing`;
+    return `${enabled ? 'Disable' : 'Enable'} ${KIND_WORDS[kind].one} sync`;
   }
 </script>
 
@@ -64,17 +64,17 @@ stops future reconciliation; work already sent to GitHub remains there.
   const said = $derived(
     enabled
       ? reach === null
-        ? 'On'
-        : `On for ${reach} ${reach === 1 ? 'repository' : 'repositories'}`
-      : `Paused · existing repository changes are kept`,
+        ? 'Enabled'
+        : `Enabled for ${reach} ${reach === 1 ? 'repository' : 'repositories'}`
+      : `Disabled · existing repository changes are kept`,
   );
 
   const why = $derived(
     enabled
       ? kind === 'files'
-        ? 'Pull requests open automatically'
-        : 'Changes apply automatically'
-      : 'Resume syncing to apply future changes',
+        ? 'File changes are proposed in pull requests'
+        : 'Detected differences are queued automatically'
+      : 'Enable sync to queue future changes',
   );
 
   const changed = $derived(updatedBy === '' || updatedAt === '' ? null : updatedAt);

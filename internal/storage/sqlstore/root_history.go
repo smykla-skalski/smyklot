@@ -205,11 +205,14 @@ func rootAuditPage(
 const rootFailureSelect = `
 SELECT
     d.id, d.delivery_id, d.target_id, d.repository_full_name, d.event,
-    d.stage, d.reason, d.retryable, d.finished_at,
+    d.stage, d.reason, d.retryable, d.finished_at, failure_queue.id,
     a.id, a.provider, a.subject_id, a.login, a.display_name, a.avatar_url, a.updated_at
 FROM deliveries d
 JOIN targets t ON t.id = d.target_id
-JOIN accounts a ON a.id = t.account_id`
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN queue_items failure_queue
+  ON failure_queue.id = 'delivery:' || CAST(d.id AS TEXT)
+  AND failure_queue.target_id = d.target_id`
 
 // ListRootFailures returns filtered delivery failures across all installations.
 func (s *Store) ListRootFailures(

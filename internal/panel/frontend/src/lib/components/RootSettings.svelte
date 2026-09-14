@@ -12,11 +12,13 @@
     type FormattingPatch,
   } from '../formatting';
   import type { RootRuntimeSection } from '../routes';
+  import { RuntimeBehaviorValidationError } from '../runtime-behavior';
   import {
     adoptRuntimeSettings,
+    buildRuntimeSettingsDraftDocument,
     applyRuntimeConfigPatch,
     overlayRuntimeSettings,
-    parseRuntimeSettingsDraftDocument,
+    decodeRuntimeSettingsDraftDocument,
     ROOT_SETTINGS_SCOPE,
     RUNTIME_DURATION_SPECS,
     runtimeConfigPatch,
@@ -42,6 +44,7 @@
   import FormattingEditor from './FormattingEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import FormError from './FormError.svelte';
+  import FieldProblem from './FieldProblem.svelte';
   import Icon from './Icon.svelte';
   import Link from './Link.svelte';
   import Popover from './Popover.svelte';
@@ -102,7 +105,11 @@
   const queryClient = useQueryClient();
   const settingsQuery = createQuery(() => ({
     queryKey: ['root-settings'],
-    queryFn: fetchSettings,
+    queryFn: async () => {
+      const current = await fetchSettings();
+      buildRuntimeSettingsDraftDocument(current);
+      return current;
+    },
   }));
   const canonicalSettings = $derived<RootRuntimeSettings | null>(settingsQuery.data ?? null);
   const document = $derived(
@@ -114,18 +121,20 @@
       : overlayRuntimeSettings(canonicalSettings, document),
   );
   const loading = $derived(settingsQuery.isPending);
+  const logProblem = $derived(drafts.serverProblem(ROOT_SETTINGS_SCOPE, 'runtime.log_level'));
+  const logProblemId = $derived(logProblem ? 'runtime-log-level-problem' : undefined);
   const saving = $derived(drafts.operation(ROOT_SETTINGS_SCOPE).saving);
   const settingsDirty = $derived(drafts.hasDirty(ROOT_SETTINGS_SCOPE));
   let actionFailure = $state<string | null>(null);
   let pauseDialogOpen = $state(false);
   let pauseSaving = $state(false);
+  function errorMessage(cause: unknown): string {
+    if (cause instanceof RuntimeBehaviorValidationError) return `${cause.message} (${cause.field})`;
+    return cause instanceof Error ? cause.message : String(cause);
+  }
+
   const failure = $derived(
-    actionFailure ??
-      (settingsQuery.error === null
-        ? null
-        : settingsQuery.error instanceof Error
-          ? settingsQuery.error.message
-          : String(settingsQuery.error)),
+    actionFailure ?? (settingsQuery.error === null ? null : errorMessage(settingsQuery.error)),
   );
 
   const runtimeOverridden = $derived(
@@ -165,7 +174,10 @@
     try {
       const updated = await saveSettings({
         background_work_paused: paused,
-        bot_config: current.behavior_defaults.override,
+        bot_config:
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         log_level: current.log_level.override,
         reaction_poll_interval_seconds: current.reaction_poll_interval.override_seconds,
         merge_after_ci_quiet_period_seconds: current.merge_after_ci_quiet_period.override_seconds,
@@ -176,7 +188,7 @@
       queryClient.setQueryData(['root-settings'], updated);
       pauseDialogOpen = false;
     } catch (cause) {
-      actionFailure = cause instanceof Error ? cause.message : String(cause);
+      actionFailure = errorMessage(cause);
       await settingsQuery.refetch();
     } finally {
       pauseSaving = false;
@@ -191,13 +203,18 @@
 
   function stage(nextValue: unknown, controlId: RuntimeSettingsControlId): boolean {
     const current = canonicalSettings;
-    const next = parseRuntimeSettingsDraftDocument(nextValue);
-    if (
-      current === null ||
-      next === null ||
-      !stageRuntimeSettingsControl(drafts, current, next, controlId)
-    ) {
-      actionFailure = 'This setting is not valid';
+    if (current === null) {
+      actionFailure = 'Settings are not loaded. Reload this page and try again';
+      return false;
+    }
+    try {
+      const next = decodeRuntimeSettingsDraftDocument(nextValue);
+      if (!stageRuntimeSettingsControl(drafts, current, next, controlId)) {
+        actionFailure = 'The draft could not be updated. Reload this page and try again';
+        return false;
+      }
+    } catch (cause) {
+      actionFailure = errorMessage(cause);
       return false;
     }
     actionFailure = null;
@@ -210,7 +227,7 @@
     stage(
       {
         ...document,
-        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
+        bot_config: applyRuntimeConfigPatch(patch),
       },
       `runtime.bot_config.${changedKey}`,
     );
@@ -219,13 +236,13 @@
   function updateFormatting(formatting: FormattingPatch, changedKey: FormattingFieldKey): void {
     const current = canonicalSettings;
     if (current === null || document === null) return;
-    const patch = runtimeConfigPatch(current.behavior_defaults.deployment, document.bot_config);
+    const patch = runtimeConfigPatch(document.bot_config);
     if (formattingOverrideCount(formatting) === 0) delete patch.formatting;
     else patch.formatting = formatting;
     stage(
       {
         ...document,
-        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
+        bot_config: applyRuntimeConfigPatch(patch),
       },
       `runtime.bot_config.${changedKey}`,
     );
@@ -352,6 +369,7 @@ without the composer.
       : (runtimeDurationSeconds(held, spec, durationMaximum(spec)) ?? held.override_seconds)}
     inherited={durationFallback(spec.key)}
     editor={held?.editor ?? null}
+    serverProblem={drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.${spec.key}`)}
     units={spec.units}
     minimum={spec.allowZero ? 0 : spec.minimumSeconds}
     maximum={durationMaximum(spec)}
@@ -362,8 +380,8 @@ without the composer.
 
 <section class="root-settings" aria-label={SECTION_COPY[section].ariaLabel}>
   <RootPageHeader title={SECTION_COPY[section].title} subtitle={SECTION_COPY[section].subtitle}>
-    {#if section === 'settings'}
-      <StatusPill dot={settingsDirty}>Changes wait for Save</StatusPill>
+    {#if section === 'settings' && settingsDirty}
+      <StatusPill dot state="warning">Unsaved changes</StatusPill>
     {/if}
   </RootPageHeader>
   {#if loading && settings === null}
@@ -441,10 +459,12 @@ without the composer.
         <div class="policy-rows">
           <div
             class={['policy-row', { 'is-unsaved': controlDirty('runtime.log_level') }]}
+            data-settings-field="log_level"
             data-unsaved={controlDirty('runtime.log_level') || undefined}
           >
             <span class="setting-say">
               <span class="setting-name">Log level</span>
+              <FieldProblem id="runtime-log-level-problem" message={logProblem} />
               <span class="setting-why">Updates the process logger without restarting Smyklot</span>
             </span>
             {#if current.log_level.override === null}
@@ -456,6 +476,7 @@ without the composer.
                 <Button
                   tone="add"
                   aria-label="Override the deployment log level"
+                  aria-describedby={logProblemId}
                   title="Override the deployment log level"
                   disabled={saving}
                   onclick={() => setLogLevel(current.log_level.deployment)}
@@ -476,6 +497,7 @@ without the composer.
                       {...attributes}
                       type="button"
                       aria-label="Runtime log level"
+                      aria-describedby={logProblemId}
                       disabled={saving}
                     >
                       {capitalize(current.log_level.override ?? current.log_level.deployment)}
@@ -520,6 +542,7 @@ without the composer.
                 'is-invalid': durationProblem(SESSION_SPEC) !== null,
               },
             ]}
+            data-settings-field="session_ttl_seconds"
             data-unsaved={controlDirty('runtime.session_ttl_seconds') || undefined}
           >
             <span class="setting-say">
@@ -567,14 +590,21 @@ without the composer.
 
       <ConfigEditor
         patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         )}
         inherited={current.behavior_defaults.deployment}
         scope="runtime"
         idPrefix="root"
         disabled={saving}
         dirtyKeys={dirtyConfigKeys}
+        serverProblems={Object.fromEntries(
+          CONFIG_KEYS.flatMap((key) => {
+            const problem = drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.bot_config.${key}`);
+            return problem === null ? [] : [[key, problem]];
+          }),
+        )}
         onChange={updateBehavior}
         onValidity={(problem) =>
           drafts.setValidationProblem(
@@ -586,20 +616,28 @@ without the composer.
 
       <FormattingEditor
         patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         ).formatting ?? {}}
         savedPatch={canonicalSettings === null
           ? {}
           : (runtimeConfigPatch(
-              canonicalSettings.behavior_defaults.deployment,
-              canonicalSettings.behavior_defaults.override,
+              canonicalSettings.behavior_defaults.intent === undefined
+                ? canonicalSettings.behavior_defaults.override
+                : canonicalSettings.behavior_defaults.intent,
             ).formatting ?? {})}
         inherited={current.behavior_defaults.deployment.formatting}
         scope="runtime"
         idPrefix="root"
         disabled={saving}
         dirtyKeys={dirtyFormattingKeys}
+        serverProblems={Object.fromEntries(
+          FORMATTING_FIELDS.flatMap(({ key }) => {
+            const problem = drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.bot_config.${key}`);
+            return problem === null ? [] : [[key, problem]];
+          }),
+        )}
         onChange={updateFormatting}
         onValidity={setFormattingValidity}
       />

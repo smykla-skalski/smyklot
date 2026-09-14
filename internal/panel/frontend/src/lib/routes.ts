@@ -119,7 +119,14 @@ export const ROOT_RUNTIME_SECTIONS = ['service', 'settings'] as const;
  * `overview` is not written into the path: it is where the view opens, so the
  * bare `/workspace/acme/sync` already means it.
  */
-export const WRITTEN_SYNC_SECTIONS = ['labels', 'settings', 'rulesets', 'files', 'plan'] as const;
+export const WRITTEN_SYNC_SECTIONS = [
+  'labels',
+  'settings',
+  'rulesets',
+  'files',
+  'plan',
+  'history',
+] as const;
 export const SYNC_SECTIONS = ['overview', ...WRITTEN_SYNC_SECTIONS] as const;
 export type SyncSection = (typeof SYNC_SECTIONS)[number];
 
@@ -139,6 +146,7 @@ export const SYNC_SECTION_LABELS: Record<SyncSection, string> = {
   rulesets: 'Rulesets',
   files: 'Shared files',
   plan: 'Plan',
+  history: 'Sync history',
 };
 
 /** One repository's own page. */
@@ -231,6 +239,12 @@ export type WorkspaceRoute = {
    * all. Only ever present with `sync === 'files'`.
    */
   syncFile?: string;
+  /** Stable execution result selected in the sync inspector. */
+  syncPlan?: string;
+  /** Queued check selected over Sync status, or the origin of its selected result. */
+  syncCheck?: string;
+  /** Original accepted request, independent of its worker or result retention. */
+  syncRequest?: { action: 'check' | 'dispatch'; requestKey: string };
   /** The Queue page the address names; absent means Active. */
   queue?: QueueSection;
   /** What is open on top of the view; see `route-dialogs`. */
@@ -571,17 +585,58 @@ function parseSection(
 function parseTrailingSync(
   view: string,
   segments: string[],
-): Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile'> | undefined | 'invalid' {
+):
+  | Pick<
+      WorkspaceRoute,
+      'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan' | 'syncCheck' | 'syncRequest'
+    >
+  | undefined
+  | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
 
   const [rawSection, ...encodedRest] = segments;
+  if (rawSection === 'request') {
+    if (encodedRest.length !== 2 || !['check', 'dispatch'].includes(encodedRest[0]!))
+      return 'invalid';
+    try {
+      const requestKey = decodeURIComponent(encodedRest[1]!);
+      if (
+        !requestKey ||
+        requestKey.trim() !== requestKey ||
+        new TextEncoder().encode(requestKey).length > 200
+      )
+        return 'invalid';
+      return {
+        sync: 'overview',
+        syncRequest: { action: encodedRest[0] as 'check' | 'dispatch', requestKey },
+      };
+    } catch {
+      return 'invalid';
+    }
+  }
+  if (rawSection === 'check') {
+    if (encodedRest.length !== 1 && !(encodedRest.length === 3 && encodedRest[1] === 'result'))
+      return 'invalid';
+    try {
+      const syncCheck = decodeURIComponent(encodedRest[0]!);
+      if (syncCheck.trim() === '') return 'invalid';
+      if (encodedRest.length === 3) {
+        const syncPlan = decodeURIComponent(encodedRest[2]!);
+        return syncPlan.trim() === '' ? 'invalid' : { sync: 'plan', syncCheck, syncPlan };
+      }
+      return { sync: 'overview', syncCheck };
+    } catch {
+      return 'invalid';
+    }
+  }
   const sync = WRITTEN_SYNC_SECTIONS.find((section) => section === rawSection);
   if (sync === undefined) return 'invalid';
   if (encodedRest.length === 0) return { sync };
-  /* Only the two object sections list named things. A ruleset's name is one
-     segment; a file's path is as many as it carries slashes. */
-  if (sync !== 'rulesets' && sync !== 'files') return 'invalid';
-  if (sync === 'rulesets' && encodedRest.length > 1) return 'invalid';
+  /* Rulesets and results use one identifying segment. A file path may
+     contain several segments. */
+  if (sync !== 'rulesets' && sync !== 'files' && sync !== 'plan' && sync !== 'history')
+    return 'invalid';
+  if (sync !== 'files' && encodedRest.length > 1) return 'invalid';
 
   let parts: string[];
   try {
@@ -590,6 +645,8 @@ function parseTrailingSync(
     return 'invalid';
   }
   if (parts.some((part) => part.trim() === '')) return 'invalid';
+
+  if (sync === 'plan' || sync === 'history') return { sync, syncPlan: parts[0] ?? '' };
 
   return sync === 'rulesets'
     ? { sync, syncRuleset: parts[0] ?? '' }

@@ -1,3 +1,4 @@
+import { parseRuntimeBehavior, resolveRuntimeBehavior } from '../../src/lib/runtime-behavior';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -294,7 +295,7 @@ describe('Root runtime settings drafts', () => {
         if (route.request().method() === 'PUT') {
           const input = route.request().postDataJSON() as RootRuntimeSettingsInput;
           expect(input.expected_revision).toBe(saved.revision);
-          expect(input.bot_config?.command_prefix).toBe(
+          expect(parseRuntimeBehavior(input.bot_config)?.overrides.command_prefix).toBe(
             `${baseline.behavior_defaults.effective.command_prefix}-pending`,
           );
           await held;
@@ -303,8 +304,18 @@ describe('Root runtime settings drafts', () => {
             revision: saved.revision + 1,
             behavior_defaults: {
               ...saved.behavior_defaults,
-              override: input.bot_config,
-              effective: input.bot_config ?? saved.behavior_defaults.deployment,
+              intent: parseRuntimeBehavior(input.bot_config),
+              override:
+                input.bot_config === null
+                  ? null
+                  : resolveRuntimeBehavior(
+                      saved.behavior_defaults.deployment,
+                      parseRuntimeBehavior(input.bot_config),
+                    ),
+              effective: resolveRuntimeBehavior(
+                saved.behavior_defaults.deployment,
+                parseRuntimeBehavior(input.bot_config),
+              ),
             },
           };
         }
@@ -523,7 +534,7 @@ describe('Root runtime settings drafts', () => {
   });
 
   it('keeps invalid raw duration text and blocks Save before the wire', async () => {
-    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     const writes: Request[] = [];
     page.on('request', (request) => {
       if (
@@ -539,19 +550,18 @@ describe('Root runtime settings drafts', () => {
       await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();
       const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
       await amount.fill('1e');
-      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect
+        .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isDisabled())
+        .toBe(true);
 
-      await page
-        .getByText('Session lifetime must be between 1 minute and 30 days')
-        .first()
-        .waitFor();
+      await page.getByText('Enter a duration in whole seconds').first().waitFor();
       expect(writes).toHaveLength(0);
       expect(await amount.getAttribute('aria-invalid')).toBe('true');
 
       await page.getByRole('link', { name: 'Service health' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/service');
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByRole('link', { name: 'Service settings' }).click();
+      await page.getByRole('link', { name: 'Open Service settings', exact: true }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
       expect(
         await page.getByRole('textbox', { name: 'Session lifetime amount' }).inputValue(),

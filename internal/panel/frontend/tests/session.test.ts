@@ -83,6 +83,15 @@ describe('PanelSession [Unit]', () => {
     vi.unstubAllGlobals();
   });
 
+  it('reuses the whole request controller only within its actor and workspace', () => {
+    const session = createSession();
+    const first = session.syncRequestController('alice', 'one');
+    expect(session.syncRequestController('alice', 'one')).toBe(first);
+    expect(session.syncRequestController('alice', 'two')).not.toBe(first);
+    expect(session.syncRequestController('bob', 'one')).not.toBe(first);
+    expect(createSession().syncRequestController('alice', 'one')).not.toBe(first);
+  });
+
   it('leaves an unauthorized Root route even when there is no workspace to return to', () => {
     const session = createSession();
 

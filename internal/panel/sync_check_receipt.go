@@ -1,0 +1,60 @@
+package panel
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
+)
+
+// The caller authorizes the current actor and target before any receipt lookup.
+// Acceptance identifies the check; it does not claim the check is still queued.
+func (s *Server) answerAcceptedSyncCheck(w http.ResponseWriter, r *http.Request, request workqueue.RecurringRequest) bool {
+	item, err := s.store.FindRecurringWorkRequest(r.Context(), request, s.now)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false
+	}
+	if err != nil {
+		s.writeSyncCommandError(w, err)
+		return true
+	}
+	writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID, Repeated: true})
+	return true
+}
+
+func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account storage.Account, target storage.Target, role storage.InstallationRole, input syncRunNowInput) {
+	request := workqueue.RecurringRequest{
+		RequestKey: input.RequestKey, SessionTokenHash: syncRequestSessionHash(r),
+		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
+		Title: "Check which repositories are in step", ActorID: account.ID,
+		Reason: input.Reason, Now: s.now().UTC(),
+	}
+	if s.answerAcceptedSyncCheck(w, r, request) {
+		return
+	}
+	item, err := s.store.RequestRecurringWork(r.Context(), request, s.now)
+	var blocked *storage.LiveSyncPlanConflict
+	if errors.As(err, &blocked) {
+		plan, actions, readErr := s.store.GetSyncPlan(r.Context(), target.ID, blocked.PlanID)
+		if readErr != nil {
+			s.writeStorageError(w, readErr)
+			return
+		}
+		dto, readErr := s.syncPlanDTO(r.Context(), plan, actions, role)
+		if readErr != nil {
+			s.writeStorageError(w, readErr)
+			return
+		}
+		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "changes_pending", Plan: &dto})
+		return
+	}
+	if err != nil {
+		s.writeSyncCommandError(w, err)
+		return
+	}
+
+	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
+	s.wakeScheduledWork(workqueue.LaneMaintenance)
+	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID})
+}

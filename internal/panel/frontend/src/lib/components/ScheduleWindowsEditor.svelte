@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { SvelteMap } from 'svelte/reactivity';
+  import { scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleWindowProblems } from '#lib/schedule-validation.js';
+  import FormError from './FormError.svelte';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
@@ -21,6 +25,23 @@
     onChange: (windows: EditableWindow[]) => void;
   } = $props();
 
+  const previousClosingTimes = new SvelteMap<string, string>();
+
+  function setEndOfDay(window: EditableWindow, index: number, checked: boolean): void {
+    if (checked) previousClosingTimes.set(window.id, window.end);
+    update(index, { end: checked ? '24:00' : (previousClosingTimes.get(window.id) ?? '') });
+  }
+
+  const problems = $derived(
+    scheduleWindowProblems(
+      windows.map((window) => ({
+        weekday: window.weekday,
+        start_minute: scheduleMinute(window.start),
+        end_minute: scheduleMinute(window.end),
+      })),
+    ),
+  );
+
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   function update(index: number, patch: Partial<EditableWindow>): void {
@@ -42,7 +63,7 @@
 The weekly windows during which work may run, edited as a list rather than a calendar.
 A window is a day and a span, and the list is the profile.
 
-Each caller owns validation and saving. Keep the entered windows intact so invalid
+Each caller owns saving. Shared row validation keeps entered windows intact so invalid
 or overlapping intervals remain visible for correction.
 -->
 
@@ -54,10 +75,17 @@ or overlapping intervals remain visible for correction.
     >
   </div>
   {#each windows as window, index (window.id)}
+    {@const rowProblems = problems.filter((entry) => entry.index === index)}
+    {@const problem = rowProblems.map((entry) => entry.message).join('. ')}
+    {@const invalid = (control: 'weekday' | 'start' | 'end') =>
+      rowProblems.some((entry) => entry.controls?.includes(control))}
+    {@const problemId = `${idPrefix}-problem-${window.id}`}
     <div class="window-row" role="group" aria-label={`Hours for ${days[window.weekday]}`}>
       <label class="form-field" for={`${idPrefix}-day-${index}`}
         ><span class="form-label">Day</span><Select
           id={`${idPrefix}-day-${index}`}
+          aria-invalid={invalid('weekday') || undefined}
+          aria-describedby={invalid('weekday') ? problemId : undefined}
           value={window.weekday}
           onValueChange={(value) => update(index, { weekday: value })}
           options={days.map((day, weekday) => ({ value: weekday, label: day }))}
@@ -68,19 +96,40 @@ or overlapping intervals remain visible for correction.
           class="text-input"
           id={`${idPrefix}-start-${index}`}
           type="time"
+          aria-invalid={invalid('start') || undefined}
+          aria-describedby={invalid('start') ? problemId : undefined}
           value={window.start}
           oninput={(event) => update(index, { start: event.currentTarget.value })}
         /></label
       >
-      <label class="form-field" for={`${idPrefix}-end-${index}`}
-        ><span class="form-label">Closes</span><input
-          class="text-input"
-          id={`${idPrefix}-end-${index}`}
-          type="time"
-          value={window.end}
-          oninput={(event) => update(index, { end: event.currentTarget.value })}
-        /></label
-      >
+      <label class="form-field" for={`${idPrefix}-end-${index}`}>
+        <span class="form-label">Closes</span>
+        {#if window.end === '24:00'}
+          <input
+            class="text-input"
+            id={`${idPrefix}-end-${index}`}
+            value="End of day"
+            aria-invalid={invalid('end') || undefined}
+            readonly
+            aria-describedby={[
+              `${idPrefix}-end-of-day-${window.id}`,
+              invalid('end') ? problemId : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
+        {:else}
+          <input
+            class="text-input"
+            id={`${idPrefix}-end-${index}`}
+            type="time"
+            aria-invalid={invalid('end') || undefined}
+            aria-describedby={invalid('end') ? problemId : undefined}
+            value={window.end}
+            oninput={(event) => update(index, { end: event.currentTarget.value })}
+          />
+        {/if}
+      </label>
       <div class="window-remove">
         <IconButton
           toolbar
@@ -90,6 +139,19 @@ or overlapping intervals remain visible for correction.
           onclick={() => onChange(windows.filter((_, at) => at !== index))}
         />
       </div>
+      <label class="check-item window-end-of-day" id={`${idPrefix}-end-of-day-${window.id}`}>
+        <input
+          type="checkbox"
+          checked={window.end === '24:00'}
+          aria-label={`Close at end of ${days[window.weekday]} (24:00)`}
+          onchange={(event) => setEndOfDay(window, index, event.currentTarget.checked)}
+        />
+        <span class="check-box"><Icon name="check" size="micro" /></span>
+        <span>Close at end of day (24:00)</span>
+      </label>
+      {#if problem}
+        <div class="window-problem" id={problemId}><FormError message={problem} /></div>
+      {/if}
     </div>
   {/each}
 </div>
@@ -109,6 +171,14 @@ or overlapping intervals remain visible for correction.
     display: grid;
     gap: var(--space-4);
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .window-row .text-input {
+    min-inline-size: 0;
+    inline-size: 100%;
+  }
+  .window-end-of-day,
+  .window-problem {
+    grid-column: 1 / -1;
   }
   .window-remove {
     display: flex;

@@ -720,6 +720,8 @@ type DeliveryClaim struct {
 // DeliveryWork is one durable payload leased to an executor. Attempt starts at
 // one and increases each time an expired or explicitly retried lease is taken.
 type DeliveryWork struct {
+	// SourceOrder identifies the original event position, independently of this run.
+	SourceOrder        int64
 	ID                 int64
 	ClaimKey           string
 	DeliveryID         string
@@ -758,7 +760,9 @@ type DeliveryFailureChange struct {
 
 // DeliveryFailure is a persisted, sanitized failure shown to operators.
 type DeliveryFailure struct {
-	ID                 int64
+	ID int64
+	// QueueItemID is absent for failures whose queue record is not retained.
+	QueueItemID        *string
 	DeliveryID         string
 	TargetID           string
 	RepositoryFullName string

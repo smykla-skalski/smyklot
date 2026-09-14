@@ -10,7 +10,7 @@
  * owns the tick.
  */
 import { formatDateTime } from '#lib/format.js';
-import type { QueueItem } from '#lib/types.js';
+import type { DeliveryOperation, QueueActionType, QueueItem } from '#lib/types.js';
 
 /** A row's sentence, in the three pieces a time has to be an element to sit between. */
 export interface QueueLine {
@@ -82,24 +82,103 @@ export function queueLine(item: QueueItem, now: number): QueueLine {
             : 'Running',
       };
     case 'blocked':
-      return { lead: `${item.blocked_reason ?? 'Waiting on something else'} · runs`, when: next };
+      return {
+        lead: `${item.blocked_reason ?? 'Waiting on a dependency'} · start time not confirmed`,
+      };
     case 'retrying':
       return {
-        lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · tries again`,
+        lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · retry can start`,
         when: next,
-        tail: ', on its own',
+        tail: ', when a worker is available',
       };
     case 'succeeded':
     case 'failed':
     case 'cancelled':
     case 'superseded': {
-      const finished = item.finished_at ?? item.updated_at;
+      const finished = item.finished_at;
+      if (!finished) return { lead: `${words(item.state)} · ${detail} · finish time unavailable` };
       return {
-        lead: `${detail} ·`,
+        lead: `${words(item.state)} · ${detail} ·`,
         when: { relative: ago(finished, now), ...instant(finished, item) },
       };
     }
     default:
-      return { lead: `${detail} · runs`, when: next };
+      return {
+        lead: `${detail} · can start`,
+        when: next,
+        tail: ', when a worker is available',
+      };
   }
+}
+
+/** Delivery recovery follows the live queue state, never the failure classifier. */
+export function deliveryNextStep(
+  item: Pick<QueueItem, 'state' | 'eligible_at'>,
+  operation?: DeliveryOperation,
+): {
+  message: string;
+  eligibleAt?: string;
+} {
+  if (operation && !operation.retained) {
+    return {
+      message:
+        'The delivery history is no longer retained. This queue record remains available for reference.',
+    };
+  }
+  if (operation?.retained && !operation.current) {
+    return {
+      message: 'No current execution is retained. This record describes the earlier attempt.',
+    };
+  }
+  const current = operation?.current;
+  if (current && !current.queue) {
+    return {
+      message:
+        current.status === 'running'
+          ? 'A delivery run is active, but its queue record is no longer retained.'
+          : current.status === 'succeeded'
+            ? 'The latest delivery run succeeded. Its queue record is no longer retained.'
+            : 'The latest delivery run failed. Its queue record is no longer retained.',
+    };
+  }
+  const state = current?.queue?.state ?? item.state;
+  const eligibleAt = current?.queue?.eligible_at ?? item.eligible_at;
+  switch (state) {
+    case 'retrying':
+      return { message: 'An automatic retry is scheduled.', eligibleAt };
+    case 'scheduled':
+    case 'ready':
+      return {
+        message: 'Waiting for a worker to process this delivery.',
+        eligibleAt,
+      };
+    case 'running':
+      return { message: 'A worker is processing this delivery now.' };
+    case 'blocked':
+      return { message: 'Processing is blocked. No start time is confirmed.' };
+    case 'awaiting_approval':
+      return { message: 'Processing is waiting for approval.' };
+    case 'failed':
+      return {
+        message: 'Automatic attempts have stopped. No retry is currently scheduled.',
+      };
+    case 'cancelled':
+      return { message: 'This delivery was cancelled. No further attempt is scheduled.' };
+    case 'superseded':
+      return { message: 'This delivery was superseded. No further attempt is scheduled.' };
+    case 'succeeded':
+      return { message: 'This delivery finished successfully. No further attempt is needed.' };
+  }
+}
+
+/** Label the occurrence affected, while the confirmation explains dispatch eligibility. */
+export function queueActionLabel(action: QueueActionType, item?: QueueItem | null): string {
+  if (action === 'run_now') {
+    if (item?.state === 'retrying') return 'Retry now';
+    return item?.source_kind === 'recurring' ? 'Run next occurrence now' : 'Run now';
+  }
+  if (action === 'next_window') return 'Move to next window';
+  if (action === 'schedule_at') return 'Schedule exact time';
+  if (action === 'set_priority') return 'Change priority';
+  return item?.source_kind === 'recurring' ? 'Cancel this occurrence' : 'Cancel work';
 }

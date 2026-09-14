@@ -1,14 +1,7 @@
+import { runtimeFieldConflicts, type RuntimeConflictChoice } from './runtime-conflicts';
 import { PanelApiError } from './api';
 import { CONFIG_KEYS } from './config';
-import {
-  applyFormattingPatch,
-  completeFormattingPatch,
-  formattingField,
-  formattingPoliciesEqual,
-  formattingPolicyValue,
-  isFormattingPreset,
-  setFormattingPolicyValue,
-} from './formatting';
+import { formattingField, formattingPatchValue, setFormattingPatchValue } from './formatting';
 import {
   applyRuntimeConfigPatch,
   buildRuntimeSettingsDraftDocument,
@@ -41,6 +34,16 @@ export interface RootSettingsSaveResult {
 
 const savedNotice = 'Saved runtime settings';
 const noOpNotice = 'Your draft already matches the saved runtime settings';
+
+/** Validate persisted runtime edits even while their page is not mounted. */
+export function rootSettingsDraftValidation(registry: SettingsDraftRegistry) {
+  const resource = registry.resource(RUNTIME_RESOURCE);
+  if (resource === null || !registry.hasDirty(ROOT_SETTINGS_SCOPE)) return null;
+  const document = parseRuntimeSettingsDraftDocument(resource.value);
+  if (document === null) return null;
+  const result = serializeRuntimeSettingsDraft(resource.expectedRevision, document);
+  return result.ok ? null : result;
+}
 
 export async function saveRootSettingsDraft(
   registry: SettingsDraftRegistry,
@@ -91,7 +94,18 @@ export async function saveRootSettingsDraft(
         // Keep the service's conflict message when the follow-up read also fails
       }
     }
-    registry.failSave(attempt, messageOf(cause));
+    const controlId =
+      cause instanceof PanelApiError && cause.status === 400 && cause.field !== undefined
+        ? `runtime.${cause.field}`
+        : null;
+    registry.failSave(
+      attempt,
+      messageOf(cause),
+      [],
+      controlId !== null && entry.controls.some((control) => control.id === controlId)
+        ? [{ resource: RUNTIME_RESOURCE, controlId }]
+        : [],
+    );
     return { saved: false };
   }
 }
@@ -99,46 +113,37 @@ export async function saveRootSettingsDraft(
 export function rebaseRootSettingsConflict(
   registry: SettingsDraftRegistry,
   latest: RootRuntimeSettings,
+  choices: Readonly<Record<string, RuntimeConflictChoice>> = {},
 ): boolean {
   const snapshot = registry.resource(RUNTIME_RESOURCE);
   if (snapshot === null || snapshot.conflict?.type !== 'revision') return false;
+  const conflicts = runtimeFieldConflicts(registry, latest);
+  if (conflicts.some((conflict) => choices[conflict.id] === undefined)) return false;
+  const useSaved = new Set(
+    conflicts.filter((conflict) => choices[conflict.id] === 'saved').map((conflict) => conflict.id),
+  );
   const draft = parseRuntimeSettingsDraftDocument(snapshot.value);
   if (draft === null) return false;
 
   const latestBase = buildRuntimeSettingsDraftDocument(latest);
   const merged = buildRuntimeSettingsDraftDocument(latest);
-  const configPatch = runtimeConfigPatch(
-    latest.behavior_defaults.deployment,
-    latestBase.bot_config,
-  );
+  const configPatch = runtimeConfigPatch(latestBase.bot_config);
   for (const control of snapshot.controls) {
+    if (useSaved.has(control.id)) continue;
     if (control.id.startsWith('runtime.bot_config.')) {
       const key = control.id.slice('runtime.bot_config.'.length);
       const field = formattingField(key);
       if (field !== undefined) {
-        const current = applyFormattingPatch(
-          latest.behavior_defaults.deployment.formatting,
-          configPatch.formatting ?? {},
-        );
         const desired =
           control.value === null
-            ? formattingPolicyValue(latest.behavior_defaults.deployment.formatting, field)
-            : draft.bot_config === null
-              ? null
-              : formattingPolicyValue(draft.bot_config.formatting, field);
-        if (desired === null) return false;
-        let resolved;
-        if (field.key === 'formatting.preset' && control.value !== null) {
-          if (!isFormattingPreset(desired)) return false;
-          resolved = applyFormattingPatch(current, { preset: desired });
-        } else {
-          resolved = setFormattingPolicyValue(current, field, desired);
-        }
-        if (formattingPoliciesEqual(resolved, latest.behavior_defaults.deployment.formatting)) {
-          delete configPatch.formatting;
-        } else {
-          configPatch.formatting = completeFormattingPatch(resolved);
-        }
+            ? undefined
+            : formattingPatchValue(draft.bot_config?.overrides.formatting ?? {}, field);
+        if (control.value !== null && desired === undefined) return false;
+        configPatch.formatting = setFormattingPatchValue(
+          configPatch.formatting ?? {},
+          field,
+          desired,
+        );
         continue;
       }
       if (!CONFIG_KEYS.includes(key as ConfigKey)) return false;
@@ -169,17 +174,15 @@ export function rebaseRootSettingsConflict(
     }
     return false;
   }
-  merged.bot_config = applyRuntimeConfigPatch(
-    latest.behavior_defaults.deployment,
-    configPatch as ConfigPatch,
-  );
+  merged.bot_config = applyRuntimeConfigPatch(configPatch as ConfigPatch);
 
   return registry.rebase(
     RUNTIME_RESOURCE,
     latest.revision,
     latestBase,
-    runtimeSettingsSavedControls(latestBase, latest.behavior_defaults.deployment),
+    runtimeSettingsSavedControls(latestBase),
     merged,
+    runtimeSettingsSavedControls(merged),
   );
 }
 

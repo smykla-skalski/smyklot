@@ -143,7 +143,8 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		harness := newPanelHarness(t, "owner")
 		response := postPanelSyncRunNow(t, harness, harness.signIn(t), 0)
 		requireResponse(t, response, "no-plan run now", http.StatusAccepted,
-			`"status":"scan_queued"`, `"kind":"sync_scan"`, `"immediate":true`)
+			`"status":"check_accepted"`, `"check_id":`)
+		assertAcceptedSyncCheckQueued(t, harness, response)
 	})
 
 	t.Run("opens a computed plan for approval", func(t *testing.T) {
@@ -152,7 +153,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		createPanelSyncPlan(t, harness, "computed", harness.now.Add(time.Hour))
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "computed-plan run now", http.StatusOK,
-			`"status":"approval_required"`, `"state":"computed"`)
+			`"status":"changes_pending"`, `"state":"computed"`)
 		item, err := harness.store.GetQueueItem(t.Context(), "sync-plan:computed")
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +180,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		}
 		response := postPanelSyncRunNow(t, harness, session, item.Revision)
 		requireResponse(t, response, "approved-plan run now", http.StatusAccepted,
-			`"status":"plan_dispatched"`, `"state":"ready"`, `"immediate":true`)
+			`"status":"dispatch_accepted"`, `"plan_id":"approved"`, `"queue_id":"sync-plan:approved"`)
 	})
 
 	t.Run("reports a plan that is already applying", func(t *testing.T) {
@@ -201,7 +202,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		}
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "applying-plan run now", http.StatusOK,
-			`"status":"already_running"`, `"state":"applying"`)
+			`"status":"changes_pending"`, `"state":"applying"`)
 	})
 
 	t.Run("queues a fresh scan after a plan expires", func(t *testing.T) {
@@ -215,7 +216,8 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		*harness.clock = later
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "expired-plan run now", http.StatusAccepted,
-			`"status":"scan_queued"`, `"kind":"sync_scan"`)
+			`"status":"check_accepted"`, `"check_id":`)
+		assertAcceptedSyncCheckQueued(t, harness, response)
 	})
 }
 
@@ -243,7 +245,10 @@ func postPanelSyncRunNow(
 	expectedRevision int64,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf(`{"reason":"operator request","expected_revision":%d}`, expectedRevision)
+	body := `{"action":"check","request_key":"operator-check-1","reason":"operator request"}`
+	if expectedRevision > 0 {
+		body = fmt.Sprintf(`{"action":"dispatch","request_key":"dispatch-1","plan_id":"approved","reason":"operator request","expected_revision":%d}`, expectedRevision)
+	}
 
 	return harness.request(t, http.MethodPost,
 		"/panel/api/v1/targets/"+panelSyncTarget+"/sync/run-now",
@@ -565,5 +570,23 @@ func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
 	if answer := syncConfigAnswer(workflow, granted, ""); answer.Unavailable != "" {
 		t.Errorf("unavailable = %q, wanted nothing: the permission is granted",
 			answer.Unavailable)
+	}
+}
+
+func assertAcceptedSyncCheckQueued(t *testing.T, h *panelHarness, response *httptest.ResponseRecorder) {
+	t.Helper()
+	var accepted syncRunNowResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &accepted); err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Queue != nil || accepted.CheckID == "" {
+		t.Fatal("acceptance must identify the check separately from current progress")
+	}
+	item, err := h.store.GetQueueItem(t.Context(), accepted.CheckID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Kind != workqueue.KindSyncScan || !item.Immediate {
+		t.Fatalf("accepted check was not queued immediately: %#v", item)
 	}
 }

@@ -9,6 +9,7 @@ import (
 )
 
 type Store interface {
+	RecordSyncCheckResult(context.Context, orgsync.CheckResultCreate) error
 	ListSyncConfigs(context.Context, string) ([]orgsync.Config, error)
 	ListSyncRepositoryOverrides(context.Context, string) ([]orgsync.RepositoryOverride, error)
 	ListSyncRepositoryState(context.Context, string) ([]orgsync.RepositoryState, error)

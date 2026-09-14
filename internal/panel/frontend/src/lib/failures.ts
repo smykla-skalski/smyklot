@@ -1,5 +1,24 @@
 import { sentenceCase } from './format';
 
+/** Failure history contains terminal deliveries, not attempts waiting in the queue. */
+export function failureClassification(retryable: boolean): {
+  label: string;
+  tone: 'warning' | 'danger';
+  guidance: string;
+} {
+  return retryable
+    ? {
+        label: 'May succeed on retry',
+        tone: 'warning',
+        guidance: 'Automatic retries have stopped',
+      }
+    : {
+        label: 'Needs a fix',
+        tone: 'danger',
+        guidance: 'Fix the cause before retrying',
+      };
+}
+
 /**
  * What was being attempted, said as the act rather than as the lane it failed in.
  *

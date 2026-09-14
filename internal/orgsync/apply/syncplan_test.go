@@ -89,8 +89,8 @@ func TestPlanInstallationNamesAnEmptyDriftScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary != "No changes" {
-		t.Errorf("summary = %q, want No changes", summary)
+	if summary != "Sync is not enabled" {
+		t.Errorf("summary = %q, want Sync is not enabled", summary)
 	}
 }
 

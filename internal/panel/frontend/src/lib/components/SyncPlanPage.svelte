@@ -1,8 +1,23 @@
 <script lang="ts">
+  import { syncActionFeedback } from '../sync-action-feedback';
+  import { syncCheckIntent, syncCheckGuidance, syncCheckBlocker } from '../sync-check-guidance';
+  import type { SyncCheckCapability } from '../types';
+  import {
+    syncDispatchGuidance,
+    syncDispatchIntent,
+    syncPlanExecutionProblem,
+  } from '../sync-dispatch-guidance';
+  import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
-  import { SYNC_KINDS, type SyncAction, type SyncPlan, type SyncRulesetDetail } from '../types';
+  import {
+    SYNC_KINDS,
+    type SyncAction,
+    type SyncPlan,
+    type SyncRunNowIntent,
+    type SyncRulesetDetail,
+  } from '../types';
   import { SYNC_SECTION_LABELS } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
@@ -10,7 +25,9 @@
   import Card from './Card.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
+  import DisclosureSection from './DisclosureSection.svelte';
   import Icon from './Icon.svelte';
+  import Link from './Link.svelte';
   import LabelBadge from './LabelBadge.svelte';
   import PageHeader from './PageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -18,6 +35,10 @@
 
   const {
     plan,
+    targetId = '',
+    checkCapability,
+    onOpenBlockingPlan,
+    onOpenRunningCheck,
     embedded = false,
     nowMs,
     readOnly,
@@ -25,11 +46,18 @@
     approving,
     discarding,
     runNowBusy,
+    runNowBlocked = false,
+    onRefresh,
+    refreshing = false,
     onApprove,
     onDiscard,
     onRunNow,
   }: {
     plan: SyncPlan | null;
+    targetId?: string;
+    checkCapability?: SyncCheckCapability;
+    onOpenBlockingPlan?: (id: string) => void;
+    onOpenRunningCheck?: (id: string) => void;
     embedded?: boolean;
     /** The clock, passed in so a story renders the same minute every time. */
     nowMs: number;
@@ -38,11 +66,42 @@
     approving: boolean;
     discarding: boolean;
     runNowBusy: boolean;
+    runNowBlocked?: boolean;
+    onRefresh?: () => Promise<void>;
+    refreshing?: boolean;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
-    onRunNow: (reason: string) => void;
+    onRunNow: (input: SyncRunNowIntent) => void;
   } = $props();
 
+  let statusHeading: HTMLHeadingElement | null = $state(null);
+  export function focusStatus(): void {
+    statusHeading?.focus({ preventScroll: true });
+  }
+  async function refreshStatus(event: MouseEvent): Promise<void> {
+    if (!onRefresh || refreshing) return;
+    const trigger = event.currentTarget as HTMLButtonElement;
+    const restoreFocus = document.activeElement === trigger;
+    await onRefresh();
+    await tick();
+    if (restoreFocus && !trigger.isConnected) statusHeading?.focus({ preventScroll: true });
+  }
+  const executionProblem = $derived(plan ? syncPlanExecutionProblem(plan) : null);
+  const dispatchIntent = $derived(plan ? syncDispatchIntent(plan) : null);
+  const dispatchGuidance = $derived(plan ? syncDispatchGuidance(plan) : null);
+  const checkIntent = $derived(syncCheckIntent(checkCapability, targetId));
+  const checkBlocker = $derived(syncCheckBlocker(checkCapability, targetId));
+  const checkGuidance = $derived(syncCheckGuidance(checkCapability, targetId));
+  const needsCheckRecovery = $derived(
+    plan !== null &&
+      (executionProblem !== null ||
+        ['expired', 'stale', 'failed', 'discarded', 'applied'].includes(plan.state)),
+  );
+  function openCheckConfirmation(): void {
+    if (!checkIntent || runNowBlocked || runNowBusy) return;
+    runIntent = checkIntent;
+    runConfirming = true;
+  }
   const actions = $derived(plan?.actions ?? []);
   const total = $derived(actions.length);
 
@@ -122,8 +181,25 @@
     };
   }
 
-  const failedOf = (group: Group): number =>
-    group.actions.filter((action) => action.state === 'failed').length;
+  function outcomeSummary(group: Group): string {
+    return [
+      ['applied', 'succeeded'],
+      ['failed', 'failed'],
+      ['skipped', 'skipped'],
+      ['pending', 'pending'],
+    ]
+      .map(([state, label]) => {
+        const count = group.actions.filter((action) => action.state === state).length;
+        return count > 0 ? `${count} ${label}` : null;
+      })
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  const hasExecution = $derived(
+    (plan !== null && ['applying', 'applied', 'failed'].includes(plan.state)) ||
+      actions.some((action) => action.state !== 'pending'),
+  );
 
   /* ---------- One row's words ---------- */
 
@@ -239,11 +315,27 @@
 
   /* ---------- The apply bar and the confirmation ---------- */
 
-  const approvable = $derived(plan !== null && plan.state === 'computed' && total > 0);
+  const approvable = $derived(
+    plan !== null && plan.state === 'computed' && executionProblem === null && total > 0,
+  );
 
   let confirming = $state(false);
   let runConfirming = $state(false);
   let runReason = $state('');
+  let runIntent = $state<
+    Omit<Extract<SyncRunNowIntent, { action: 'dispatch' }>, 'reason'> | { action: 'check' }
+  >({ action: 'check' });
+
+  function openRunConfirmation(): void {
+    if (plan?.state === 'approved') {
+      if (!dispatchIntent || runNowBlocked || runNowBusy) return;
+      runIntent = dispatchIntent;
+    } else {
+      openCheckConfirmation();
+      return;
+    }
+    runConfirming = true;
+  }
 
   const removals = $derived(actions.filter((action) => action.operation === 'delete'));
 
@@ -264,7 +356,9 @@
       : { lead: 'Expires ', strong: until };
   });
 
-  const landed = $derived(actions.filter((action) => action.state === 'applied').length);
+  const succeeded = $derived(actions.filter((action) => action.state === 'applied').length);
+  const skipped = $derived(actions.filter((action) => action.state === 'skipped').length);
+  const completed = $derived(actions.filter((action) => action.state !== 'pending').length);
   const failed = $derived(actions.filter((action) => action.state === 'failed').length);
 
   const profileTime = (value: string, timezone?: string): string =>
@@ -280,107 +374,152 @@ baseline, operation counts and the promise on the apply bar, scope on
 the button.
 -->
 
+{#snippet checkRecovery()}
+  <section class="check-recovery" aria-label="Repository check recovery">
+    <p>{checkGuidance}</p>
+    <div class="check-recovery-actions">
+      <Button
+        row
+        disabled={!checkIntent || runNowBusy || runNowBlocked}
+        onclick={openCheckConfirmation}>Check repositories</Button
+      >
+      {#if checkBlocker?.kind === 'plan' && checkBlocker.id !== plan?.id && onOpenBlockingPlan}
+        <Button row onclick={() => onOpenBlockingPlan?.(checkBlocker!.id)}
+          >View current changes</Button
+        >
+      {/if}
+      {#if checkBlocker?.kind === 'check' && onOpenRunningCheck}
+        <Button row onclick={() => onOpenRunningCheck?.(checkBlocker!.id)}
+          >View running check</Button
+        >
+      {/if}
+      {#if onRefresh}
+        <Button row disabled={refreshing} onclick={refreshStatus}
+          >{refreshing ? 'Refreshing…' : 'Refresh status'}</Button
+        >
+      {/if}
+    </div>
+  </section>
+{/snippet}
+
 <div class="view-frame">
   {#if !embedded}<PageHeader id="sync-plan-heading" section="Sync" title="Sync details" />{/if}
 
   {#if plan === null || total === 0}
-    <!-- Having no plan is a state, not a verdict: the page-tier heading and the
-         paragraph under it were the loaded page's shape worn by the empty one.
-         `Check drift now` is the panel's one act rather than a button beside a
-         headline about nothing. -->
-    <Card>
-      <div class="state-panel">
-        <span
-          ><strong>No sync is in progress</strong> Smyklot checks saved configuration and syncs changes
-          automatically</span
-        >
-        {#if canControl}
-          <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
-            >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
-          >
-        {/if}
-      </div>
-    </Card>
+    <div class="hero">
+      <h2 bind:this={statusHeading} tabindex="-1">
+        {plan === null ? 'No changes to review' : 'This result contains no changes'}
+      </h2>
+    </div>
+    {@render checkRecovery()}
   {:else}
     <div class="hero">
-      <h2>
-        {#if plan.state === 'computed'}<span class="is-drift"
+      <h2 bind:this={statusHeading} tabindex="-1">
+        {#if executionProblem}{executionProblem}{:else if plan.state === 'computed'}<span
+            class="is-drift"
             >{total}
             {total === 1 ? 'change' : 'changes'}</span
           >
           {total === 1 ? 'needs' : 'need'} attention{:else if plan.state === 'approved'}<span
             class="is-drift">{total} {total === 1 ? 'change' : 'changes'}</span
-          > queued{:else if plan.state === 'applying'}Syncing · {landed} of {total} changes applied{:else if plan.state === 'applied'}{total}
-          {total === 1 ? 'change' : 'changes'} applied{:else if plan.state === 'failed'}<span
+          > queued{:else if plan.state === 'applying'}{completed} of {total} changes processed{:else if plan.state === 'applied'}{total}
+          {total === 1 ? 'change' : 'changes'} processed{:else if plan.state === 'failed'}<span
             class="is-failed">{failed} of {total} failed</span
           >{:else if plan.state === 'stale'}This check is <span class="is-stale">out of date</span
-          >{:else}This check
+          >{:else if plan.state === 'discarded'}Changes declined{:else}This check
           <span class="is-expired">expired</span>{/if}
       </h2>
+      {#if ['applying', 'applied', 'failed'].includes(plan.state) && completed > 0}
+        <p class="dispatch-guidance">{succeeded} succeeded · {failed} failed · {skipped} skipped</p>
+      {/if}
       <span class="hero-meta hero-meta-lines">
-        <span>Checked <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
+        <span>Changes prepared: <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
         {#if plan.state === 'computed' && expiresWording !== null}
           <span>{expiresWording.lead}<strong>{expiresWording.strong}</strong></span>
         {/if}
       </span>
     </div>
 
-    {#if plan.queue_item !== undefined}
+    {#if dispatchGuidance && (executionProblem || ['approved', 'applying'].includes(plan.state))}
+      <div class="execution-guidance">
+        <p id="dispatch-guidance" class="dispatch-guidance">{dispatchGuidance}</p>
+      </div>
+    {/if}
+    {#if needsCheckRecovery}
+      {@render checkRecovery()}
+    {/if}
+    {#if plan.queue_item !== undefined && executionProblem === null}
       {@const queued = plan.queue_item}
       <section class="schedule-card" aria-labelledby="plan-schedule-title">
         <div class="schedule-card-head">
           <h3 id="plan-schedule-title">Execution schedule</h3>
           <div class="schedule-card-actions">
-            <span class="schedule-state">{queued.state.replaceAll('_', ' ')}</span>
             {#if canControl && plan.state === 'approved'}
-              <Button row tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
-                >{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
+              <Button
+                row
+                tone="signal"
+                disabled={runNowBusy || runNowBlocked || dispatchIntent === null}
+                aria-describedby={dispatchGuidance ? 'dispatch-guidance' : undefined}
+                onclick={openRunConfirmation}>{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
               >
             {/if}
           </div>
         </div>
-        <dl class="schedule-facts">
-          <div>
-            <dt>Runs no earlier than</dt>
-            <dd>
-              <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
-              <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Hours</dt>
-            <dd>
-              {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
-              <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Estimated start</dt>
-            <dd>
-              {queued.estimated_start_at
-                ? formatDateTime(queued.estimated_start_at)
-                : 'Not estimated'}
-              <small
-                >{queued.work_ahead === 0
-                  ? 'Nothing ahead of it'
-                  : `${queued.work_ahead} items ahead`} · estimate</small
-              >
-            </dd>
-          </div>
-          <div>
-            <dt>Current status</dt>
-            <dd>
-              {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
-              <small
-                >{queued.state === 'running'
-                  ? `${plan.execution_stage} · attempt ${queued.attempt} · ${queued.progress_current} of ${queued.progress_total}`
-                  : queued.state === 'retrying'
-                    ? `Retry attempt ${queued.attempt}`
-                    : `${plan.execution_stage} · priority ${queued.priority}`}</small
-              >
-            </dd>
-          </div>
-        </dl>
+        <p class="schedule-summary">
+          {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
+        </p>
+        {#if queued.state === 'retrying'}
+          <p class="dispatch-guidance">Retry attempt {queued.attempt}</p>
+        {/if}
+        {#if dispatchIntent}
+          <p class="dispatch-guidance">
+            Run now skips the scheduling window. Execution starts when a worker is available.
+          </p>
+        {/if}
+        <DisclosureSection title="Scheduling details" description="Timing and queue progress">
+          <dl class="schedule-facts">
+            <div>
+              <dt>Runs no earlier than</dt>
+              <dd>
+                <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
+                <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Hours</dt>
+              <dd>
+                {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
+                <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Estimated start</dt>
+              <dd>
+                {queued.estimated_start_at
+                  ? formatDateTime(queued.estimated_start_at)
+                  : 'Not estimated'}
+                <small
+                  >{queued.work_ahead === 0
+                    ? 'Nothing ahead of it'
+                    : `${queued.work_ahead} items ahead`} · estimate</small
+                >
+              </dd>
+            </div>
+            <div>
+              <dt>Queue status</dt>
+              <dd>
+                {queued.state.replaceAll('_', ' ')}
+                <small
+                  >{queued.state === 'running'
+                    ? `${plan.execution_stage} · attempt ${queued.attempt} · ${queued.progress_current} of ${queued.progress_total}`
+                    : queued.state === 'retrying'
+                      ? `Retry attempt ${queued.attempt}`
+                      : `${plan.execution_stage} · priority ${queued.priority}`}</small
+                >
+              </dd>
+            </div>
+          </dl>
+        </DisclosureSection>
       </section>
     {/if}
 
@@ -411,7 +550,6 @@ the button.
         {#each groups as group, index (group.repository)}
           {@const visible = visibleOf(group)}
           {@const counts = groupCounts(group)}
-          {@const groupFailed = failedOf(group)}
           {@const open = isOpen(group.repository, index)}
           {@const rowsId = `plan-group-${index}`}
           <li>
@@ -427,11 +565,10 @@ the button.
                 <span class="object-name-row">
                   <span class="object-name mono-name">{group.repository}</span>
                 </span>
+                {#if hasExecution}<span class="object-sum">{outcomeSummary(group)}</span>{/if}
               </span>
               <span class="object-side">
-                {#if groupFailed > 0}
-                  <span class="pill pill-danger"><span class="t">{groupFailed} failed</span></span>
-                {:else}
+                {#if !hasExecution}
                   <span class="repo-group-counts">
                     {#if counts.add > 0}<span class="count-add">+{counts.add}</span>{/if}
                     {#if counts.chg > 0}<span class="count-chg">~{counts.chg}</span>{/if}
@@ -448,6 +585,13 @@ the button.
                   {@const opens = expandable(action)}
                   {@const showing = opens && expanded.has(keyOf(action))}
                   {@const shape = rowShape(action)}
+                  {@const feedback =
+                    ['applying', 'applied', 'failed'].includes(plan.state) ||
+                    action.state !== 'pending' ||
+                    action.error ||
+                    action.blocker
+                      ? syncActionFeedback(action)
+                      : null}
                   <!-- ONE ROW, whatever it can do. A row that opens a diff used to be
                    a second component - a 24px button beside a 40px div, holding
                    the same three spans - so a list of six rows kept two rhythms
@@ -545,11 +689,15 @@ the button.
                         <DiffBlock before={action.before ?? ''} after={action.after ?? ''} />
                       </div>
                     {/if}
-                    {#if action.error !== undefined}
-                      <span class="action-fail">{action.error}</span>
-                    {:else if action.blocker !== undefined}
-                      <span class="action-fail">not tried: {action.blocker} failed first</span>
-                    {/if}
+                    {#if action.proposal_url}<span class="action-proposal"
+                        ><Link href={action.proposal_url} target="_blank" rel="noreferrer"
+                          >View pull request</Link
+                        ></span
+                      >{/if}
+                    {#if feedback}<span
+                        class="action-fail"
+                        class:is-neutral={action.state !== 'failed'}>{feedback}</span
+                      >{/if}
                   </div>
                 {/each}
               </div>
@@ -627,11 +775,11 @@ the button.
   <ConfirmDialog
     id="sync-run-now-dialog"
     open={runConfirming}
-    title={plan?.state === 'approved' ? 'Sync now?' : 'Check sync now?'}
-    description={plan?.state === 'approved'
+    title={runIntent.action === 'dispatch' ? 'Sync now?' : 'Check sync now?'}
+    description={runIntent.action === 'dispatch'
       ? 'Run the queued changes now, outside the assigned schedule'
       : 'Check repositories now and queue changes from your saved configuration'}
-    confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Check now'}
+    confirmLabel={runIntent.action === 'dispatch' ? 'Run now' : 'Check now'}
     busyLabel="Queuing…"
     confirmTone="signal"
     busy={runNowBusy}
@@ -644,20 +792,53 @@ the button.
       if (reason === '') return;
       runConfirming = false;
       runReason = '';
-      onRunNow(reason);
+      onRunNow({ ...runIntent, reason });
     }}
   >
-    <label class="run-reason" for="sync-run-reason"
-      >Reason<textarea
+    <div class="form-field">
+      <label class="form-label" for="sync-run-reason">Reason</label>
+      <textarea
+        class="text-input"
         id="sync-run-reason"
         rows="3"
+        required
+        aria-describedby="sync-run-reason-help"
         bind:value={runReason}
-        placeholder="Why should this run outside its normal schedule?"></textarea></label
-    >
+        placeholder="Why should this run outside its normal schedule?"></textarea>
+      <p id="sync-run-reason-help" class="form-help">
+        Required. Explain why these changes should run outside their usual timing.
+      </p>
+    </div>
   </ConfirmDialog>
 </div>
 
 <style>
+  .check-recovery {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .check-recovery p {
+    margin: 0;
+    color: var(--text-secondary);
+  }
+  .check-recovery-actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .execution-guidance {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .execution-guidance .dispatch-guidance {
+    flex: 1;
+  }
+  .dispatch-guidance {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
+  }
   /* The reading column is the sheet's; what is this page's own is the apply bar's seat -
      the marker's named view timeline is declared in the slot after it and handed back up
      here. */
@@ -744,18 +925,16 @@ the button.
   }
 
   .schedule-card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
+    display: grid;
+    gap: var(--space-3);
     margin-block-end: var(--space-4);
-    padding: var(--space-4);
   }
 
   .schedule-card-head {
     align-items: center;
     display: flex;
     justify-content: space-between;
-    margin-block-end: var(--space-4);
+    gap: var(--space-3);
   }
 
   .schedule-card-head h3 {
@@ -769,17 +948,15 @@ the button.
     gap: var(--space-3);
   }
 
-  .schedule-state {
+  .schedule-summary {
+    margin: 0;
     color: var(--text-secondary);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    text-transform: uppercase;
   }
 
   .schedule-facts {
     display: grid;
     gap: var(--space-4);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin: 0;
   }
 
@@ -1157,12 +1334,20 @@ the button.
 
   /* The error belongs to ITS row: pulled to 4px under its own line, so the
      next row (16px of paddings away) can never claim it. */
+  .action-proposal {
+    grid-column: 3;
+  }
+
   .action-fail {
     color: var(--danger);
     font-size: var(--font-size-micro);
     grid-column: 3;
     line-height: var(--leading-micro);
     margin-block-start: calc(var(--space-1) - var(--space-3));
+  }
+
+  .action-fail.is-neutral {
+    color: var(--text-secondary);
   }
 
   /* ---------- The apply bar: material lives in ApplyBar.svelte ---------- */
@@ -1217,11 +1402,6 @@ the button.
     padding: 0 0.5rem;
   }
 
-  .pill .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
   .pill-danger {
     background: var(--danger-tint);
     color: var(--danger);
@@ -1250,29 +1430,6 @@ the button.
   .confirm-danger {
     color: var(--danger);
     font-weight: 600;
-  }
-
-  .run-reason {
-    color: var(--text-secondary);
-    display: grid;
-    font-size: var(--font-size-meta);
-    gap: var(--space-2);
-  }
-
-  .run-reason textarea {
-    background: var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font: inherit;
-    min-block-size: 5rem;
-    padding: var(--space-3);
-    resize: vertical;
-  }
-
-  .run-reason textarea:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-offset);
   }
 
   @media (max-width: 36rem) {

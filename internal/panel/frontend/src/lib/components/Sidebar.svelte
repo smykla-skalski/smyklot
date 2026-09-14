@@ -386,7 +386,8 @@ it has to answer to the same fact.
     <button
       class="side-fold"
       type="button"
-      aria-label={collapsed ? 'Expand pages' : 'Collapse pages'}
+      aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+      data-tip={collapsed ? 'Expand navigation' : 'Collapse navigation'}
       aria-expanded={!collapsed}
       onclick={onToggleCollapsed}
     >
@@ -404,7 +405,13 @@ it has to answer to the same fact.
         label="Switch workspace"
       >
         {#snippet trigger(attributes)}
-          <button {...attributes} class="side-ws-mini" type="button" aria-label={switchLabel}>
+          <button
+            {...attributes}
+            class="side-ws-mini"
+            type="button"
+            aria-label={switchLabel}
+            data-tip={switchLabel}
+          >
             {#if chrome.rootMode}
               <span class="ws-mini is-console"><Icon name="shield" size="xs" /></span>
             {:else if chrome.selected?.account.avatar_url != null}
@@ -412,6 +419,7 @@ it has to answer to the same fact.
             {:else}
               <span class="ws-mini"><span class="t">{workspaceInitials(title)}</span></span>
             {/if}
+            <Icon name="chevron-down" size="xs" />
           </button>
         {/snippet}
       </WorkspaceMenu>
@@ -772,6 +780,8 @@ it has to answer to the same fact.
     border-radius: 6px;
     cursor: pointer;
     display: none;
+    color: var(--sidebar-text-secondary);
+    gap: var(--space-1);
     grid-column: 1;
     grid-row: 2;
     inline-size: 100%;

@@ -56,9 +56,17 @@ func DeclareSpecs(harness Harness) {
 	declareServiceSampleSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareDeliveryRecoverySpecs(func() (context.Context, storage.Store, time.Time) { return ctx, store, now })
+	declareDeliveryOrderSpecs(func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
+	declareFailureQueueSpecs(harness, func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 	declareRuntimeSettingsHistorySpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareRuntimeBehaviorSpecs(func() (context.Context, storage.Store, time.Time) { return ctx, store, now })
 	declareInstallationSettingsSpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
@@ -231,7 +239,7 @@ func DeclareSpecs(harness Harness) {
 		pendingCIQuietPeriod := 45 * time.Second
 		sessionTTL := 2 * time.Hour
 		saved, err := store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
-			BotConfig:                     botConfig,
+			BotConfig:                     runtimeBehavior(botConfig),
 			LogLevel:                      &logLevel,
 			PollInterval:                  &pollInterval,
 			PendingCIQuietPeriod:          &pendingCIQuietPeriod,
@@ -247,7 +255,7 @@ func DeclareSpecs(harness Harness) {
 		Expect(saved.CheckpointID).NotTo(BeNil())
 		Expect(updated.Revision).To(Equal(int64(1)))
 		Expect(updated.BotConfig).NotTo(BeNil())
-		Expect(updated.BotConfig.QuietSuccess).To(BeTrue())
+		Expect(updated.BotConfig.Resolve(config.Default()).QuietSuccess).To(BeTrue())
 		Expect(updated.LogLevel).To(HaveValue(Equal(logLevel)))
 		Expect(updated.PollInterval).To(HaveValue(Equal(pollInterval)))
 		Expect(updated.PendingCIQuietPeriod).To(HaveValue(Equal(pendingCIQuietPeriod)))
@@ -318,13 +326,10 @@ func DeclareSpecs(harness Harness) {
 		tooFast := 500 * time.Millisecond
 		tooSlow := storage.MaxRuntimePollInterval + time.Second
 		shortSession := 30 * time.Second
-		invalidBot := config.Default()
-		invalidBot.Runner = config.Runner("unknown")
 		for _, change := range []storage.RuntimeSettingsChange{
 			{PollInterval: &tooFast},
 			{PollInterval: &tooSlow},
 			{SessionTTL: &shortSession},
-			{BotConfig: invalidBot},
 		} {
 			change.EffectivePendingCIQuietPeriod = 30 * time.Second
 			change.EffectiveSessionTTL = time.Hour

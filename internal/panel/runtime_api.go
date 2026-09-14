@@ -10,7 +10,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
@@ -23,14 +22,14 @@ import (
 const MaxPathIndexInterval = storage.MaxPathIndexInterval
 
 type runtimeSettingsRequest struct {
-	BackgroundWorkPaused        requiredRuntimeValue[bool]          `json:"background_work_paused"`
-	BotConfig                   requiredRuntimeValue[config.Config] `json:"bot_config"`
-	LogLevel                    requiredRuntimeValue[string]        `json:"log_level"`
-	PollIntervalSeconds         requiredRuntimeValue[int64]         `json:"reaction_poll_interval_seconds"`
-	PendingCIQuietPeriodSeconds requiredRuntimeValue[int64]         `json:"merge_after_ci_quiet_period_seconds"`
-	PathIndexIntervalSeconds    requiredRuntimeValue[int64]         `json:"path_index_interval_seconds"`
-	SessionTTLSeconds           requiredRuntimeValue[int64]         `json:"session_ttl_seconds"`
-	ExpectedRevision            requiredRuntimeValue[int64]         `json:"expected_revision"`
+	BackgroundWorkPaused        requiredRuntimeValue[bool]            `json:"background_work_paused"`
+	BotConfig                   requiredRuntimeValue[json.RawMessage] `json:"bot_config"`
+	LogLevel                    requiredRuntimeValue[string]          `json:"log_level"`
+	PollIntervalSeconds         requiredRuntimeValue[int64]           `json:"reaction_poll_interval_seconds"`
+	PendingCIQuietPeriodSeconds requiredRuntimeValue[int64]           `json:"merge_after_ci_quiet_period_seconds"`
+	PathIndexIntervalSeconds    requiredRuntimeValue[int64]           `json:"path_index_interval_seconds"`
+	SessionTTLSeconds           requiredRuntimeValue[int64]           `json:"session_ttl_seconds"`
+	ExpectedRevision            requiredRuntimeValue[int64]           `json:"expected_revision"`
 }
 
 type requiredRuntimeValue[T any] struct {
@@ -89,12 +88,12 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	change, proposed, err := s.runtimeSettingsChange(actor, input, current)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
+		writeRuntimeValidationError(w, err)
 		return
 	}
 	effective, err := resolveRuntimeValues(s.cfg, proposed)
 	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
+		writeRuntimeValidationError(w, err)
 		return
 	}
 	change.EffectivePendingCIQuietPeriod = effective.PendingCIQuietPeriod
@@ -130,9 +129,9 @@ func (s *Server) runtimeSettingsChange(
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
 			fmt.Errorf("every runtime setting and expected revision is required")
 	}
-	botConfig, err := s.runtimeBotConfig(input.BotConfig.value)
+	botConfig, err := decodeRuntimeBehavior(input.BotConfig.value)
 	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("bot_config", err)
 	}
 	sessionTTL, err := runtimeDuration(
 		input.SessionTTLSeconds.value,
@@ -141,7 +140,7 @@ func (s *Server) runtimeSettingsChange(
 		"session lifetime",
 	)
 	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("session_ttl_seconds", err)
 	}
 	pollInterval, err := runtimeOptionalInterval(
 		input.PollIntervalSeconds.value,
@@ -150,7 +149,7 @@ func (s *Server) runtimeSettingsChange(
 		"reaction sweep interval",
 	)
 	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("reaction_poll_interval_seconds", err)
 	}
 	pendingCIQuietPeriod, err := runtimeDuration(
 		input.PendingCIQuietPeriodSeconds.value,
@@ -159,7 +158,7 @@ func (s *Server) runtimeSettingsChange(
 		"merge-after-CI quiet period",
 	)
 	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("merge_after_ci_quiet_period_seconds", err)
 	}
 	pathIndexInterval, err := runtimeDuration(
 		input.PathIndexIntervalSeconds.value,
@@ -168,18 +167,18 @@ func (s *Server) runtimeSettingsChange(
 		"file list refresh interval",
 	)
 	if err != nil {
-		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("path_index_interval_seconds", err)
 	}
 	if input.LogLevel.value != nil {
 		if _, err := logging.ParseLevel(*input.LogLevel.value); err != nil {
-			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
+			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, runtimeFieldFailure("log_level", err)
 		}
 	}
 	backgroundWorkPaused := current.BackgroundWorkPaused
 	if input.BackgroundWorkPaused.present {
 		if input.BackgroundWorkPaused.value == nil {
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
-				errors.New("background work pause must be true or false")
+				runtimeFieldFailure("background_work_paused", errors.New("background work pause must be true or false"))
 		}
 		backgroundWorkPaused = *input.BackgroundWorkPaused.value
 	}
@@ -225,24 +224,6 @@ func runtimeOptionalInterval(
 	return runtimeDuration(seconds, minimum, maximum, label)
 }
 
-func (s *Server) runtimeBotConfig(input *config.Config) (*config.Config, error) {
-	if input == nil {
-		return nil, nil
-	}
-	// Runner is deployment-owned rather than a panel setting. An omitted runner
-	// is the canonical browser shape; an explicit value must still be valid.
-	if input.Runner != "" {
-		if _, err := config.ParseRunner(string(input.Runner)); err != nil {
-			return nil, fmt.Errorf("invalid behavior defaults: %w", err)
-		}
-	}
-
-	value := config.ApplyPatch(config.Default(), input.AsPatch())
-	value.Runner = s.cfg.ProcessConfig.EffectiveRunner()
-
-	return value, nil
-}
-
 func runtimeDuration(
 	seconds *int64,
 	minimum, maximum time.Duration,
@@ -263,4 +244,18 @@ func runtimeDuration(
 	}
 
 	return &value, nil
+}
+
+func decodeRuntimeBehavior(raw *json.RawMessage) (*storage.RuntimeBehavior, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var behavior storage.RuntimeBehavior
+	if err := json.Unmarshal(*raw, &behavior); err != nil {
+		return nil, fmt.Errorf("bot_config: %w", err)
+	}
+	if behavior.IsEmpty() {
+		return nil, nil
+	}
+	return &behavior, nil
 }

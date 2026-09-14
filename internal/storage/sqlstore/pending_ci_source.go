@@ -32,29 +32,9 @@ func (s *Store) ClaimSourceRevision(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	retry, err := pendingCISourceRetry(ctx, tx, request)
-	if err != nil || retry != nil {
-		if err != nil {
-			return pendingci.SourceRevisionResult{}, err
-		}
-
-		return *retry, nil
-	}
-	latest, err := latestPendingCISource(ctx, tx, request)
-	if err != nil {
-		return pendingci.SourceRevisionResult{}, err
-	}
-	if latest != nil {
-		comparison, compareErr := pendingci.CompareSourceEvents(
-			request.Revision, request.Sequence, request.SourceOrder,
-			latest.revision, latest.sequence, latest.order,
-		)
-		if compareErr != nil {
-			return pendingci.SourceRevisionResult{}, compareErr
-		}
-		if comparison <= 0 {
-			return pendingci.SourceRevisionResult{}, nil
-		}
+	decision, recorded, err := checkPendingCISource(ctx, tx, request)
+	if err != nil || recorded || !decision.Accepted {
+		return decision, err
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -80,93 +60,6 @@ INSERT INTO pending_ci_source_revisions (
 	return pendingci.SourceRevisionResult{
 		Accepted: true, SourceOrder: request.SourceOrder,
 	}, nil
-}
-
-type pendingCISource struct {
-	revision string
-	sequence int
-	order    int64
-}
-
-func pendingCISourceRetry(
-	ctx context.Context,
-	tx *transaction,
-	request pendingci.SourceRevisionRequest,
-) (*pendingci.SourceRevisionResult, error) {
-	var retry pendingCISource
-	err := tx.QueryRowContext(ctx, `
-SELECT source_revision, source_sequence, source_order
-FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ? AND event_key = ?`,
-		request.RepositoryID, request.PullRequest, request.CommentID, request.EventKey,
-	).Scan(&retry.revision, &retry.sequence, &retry.order)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read pending CI source retry: %w", err)
-	}
-
-	latest, err := latestPendingCISource(ctx, tx, request)
-	if err != nil {
-		return nil, fmt.Errorf("read latest pending CI source retry: %w", err)
-	}
-	comparison, err := pendingci.CompareSourceEvents(
-		retry.revision, retry.sequence, retry.order,
-		latest.revision, latest.sequence, latest.order,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &pendingci.SourceRevisionResult{
-		Accepted: comparison == 0, SourceOrder: retry.order,
-	}, nil
-}
-
-func latestPendingCISource(
-	ctx context.Context,
-	tx *transaction,
-	request pendingci.SourceRevisionRequest,
-) (*pendingCISource, error) {
-	rows, err := tx.QueryContext(ctx, `
-SELECT source_revision, source_sequence, source_order
-FROM pending_ci_source_revisions
-WHERE repository_id = ? AND pull_request = ? AND source_comment_id = ?`,
-		request.RepositoryID, request.PullRequest, request.CommentID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("read latest pending CI source revision: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var latest *pendingCISource
-	for rows.Next() {
-		candidate := &pendingCISource{}
-		if err := rows.Scan(&candidate.revision, &candidate.sequence, &candidate.order); err != nil {
-			return nil, fmt.Errorf("scan pending CI source revision: %w", err)
-		}
-		if latest == nil {
-			latest = candidate
-
-			continue
-		}
-		comparison, err := pendingci.CompareSourceEvents(
-			candidate.revision, candidate.sequence, candidate.order,
-			latest.revision, latest.sequence, latest.order,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if comparison > 0 {
-			latest = candidate
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate pending CI source revisions: %w", err)
-	}
-
-	return latest, nil
 }
 
 // DrainLegacy creates one terminal cleanup record for a label that predates

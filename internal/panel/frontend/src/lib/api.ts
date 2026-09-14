@@ -1,3 +1,15 @@
+import { parseLocalTimeResolution, type LocalTimeResolution } from './schedule-local-time';
+import {
+  parseScheduleDatePreview,
+  type ScheduleDatePreview,
+  type SchedulePreviewInput,
+} from './schedule-preview';
+import { parseScheduleTimezonePreview, type ScheduleTimezonePreview } from './schedule-timezone';
+import type {
+  DeliveryRecoveryPreview,
+  DeliveryRecoveryRequest,
+  DeliveryRecoveryResult,
+} from './delivery-recovery';
 import { panelUrl } from './base';
 import type {
   ConfigFilePreview,
@@ -73,7 +85,14 @@ import type {
   SyncOverride,
   SyncPathIndex,
   SyncPlan,
+  SyncPlanResponse,
+  SyncPlanSummary,
+  SyncCheckObservation,
+  SyncRequestHistory,
+  SyncOperationResponse,
+  SyncCheckResponse,
   SyncRunNowResponse,
+  SyncRunNowInput,
   SyncFilesContext,
   SyncStatus,
   InvitationDays,
@@ -89,6 +108,7 @@ export class PanelApiError extends Error {
     message: string,
     readonly kind?: string,
     readonly conflicts: WorkspaceSettingsConflict[] = [],
+    readonly field?: string,
   ) {
     super(message);
     this.name = 'PanelApiError';
@@ -117,6 +137,7 @@ export interface PanelApi {
     query?: string,
   ): Promise<BypassActorDirectory>;
   fetchViewer(): Promise<PanelViewer | null>;
+  fetchInstallation(signal?: AbortSignal): Promise<string | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootWorkspaces(): Promise<RootWorkspace[]>;
   syncRootWorkspaces(): Promise<string[]>;
@@ -128,6 +149,17 @@ export interface PanelApi {
   fetchRootQueue(query?: string): Promise<QueuePage>;
   fetchTargetQueue(targetId: string, query?: string): Promise<QueuePage>;
   fetchRootQueueItem(itemId: string): Promise<QueueDetail>;
+  previewDeliveryRecovery(
+    targetId: string,
+    deliveryId: string,
+    root: boolean,
+  ): Promise<DeliveryRecoveryPreview>;
+  retryDelivery(
+    targetId: string,
+    deliveryId: string,
+    root: boolean,
+    input: DeliveryRecoveryRequest,
+  ): Promise<DeliveryRecoveryResult>;
   fetchTargetQueueItem(targetId: string, itemId: string): Promise<QueueDetail>;
   actOnRootQueue(itemId: string, input: QueueActionInput): Promise<QueueItem>;
   actOnTargetQueue(targetId: string, itemId: string, input: QueueActionInput): Promise<QueueItem>;
@@ -137,6 +169,20 @@ export interface PanelApi {
     itemId: string,
     input: QueueActionInput,
   ): Promise<QueueSchedulePreview>;
+  previewScheduleDate(
+    input: SchedulePreviewInput,
+    signal?: AbortSignal,
+  ): Promise<ScheduleDatePreview>;
+  resolveScheduleLocalTime(
+    timezone: string,
+    localTime: string,
+    signal?: AbortSignal,
+  ): Promise<LocalTimeResolution>;
+  previewScheduleTimezone(
+    timezone: string,
+    at: string,
+    signal?: AbortSignal,
+  ): Promise<ScheduleTimezonePreview>;
   fetchRootScheduleProfiles(): Promise<ScheduleProfile[]>;
   fetchRootJobPolicies(): Promise<RootJobPolicies>;
   fetchRootScheduleRequests(): Promise<ScheduleRequest[]>;
@@ -174,10 +220,7 @@ export interface PanelApi {
     id: string,
     expectedRevision: number,
   ): Promise<ScheduleRequest>;
-  runSyncNow(
-    targetId: string,
-    input: { expected_revision: number; reason: string },
-  ): Promise<SyncRunNowResponse>;
+  runSyncNow(targetId: string, input: SyncRunNowInput): Promise<SyncRunNowResponse>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
   fetchRootInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
@@ -308,7 +351,26 @@ export interface PanelApi {
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
-  fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
+  fetchSyncHistory(
+    targetId: string,
+    request: { limit: number; cursor?: string },
+  ): Promise<Page<SyncPlanSummary>>;
+  fetchSyncRequests(
+    targetId: string,
+    request: { limit: number; cursor?: string },
+  ): Promise<SyncRequestHistory>;
+  fetchSyncOperation(
+    targetId: string,
+    action: 'check' | 'dispatch',
+    requestKey: string,
+  ): Promise<SyncOperationResponse>;
+  fetchSyncCheck(targetId: string, checkId: string): Promise<SyncCheckResponse>;
+  fetchSyncCheckObservations(
+    targetId: string,
+    checkId: string,
+    request: { limit: number; cursor?: string },
+  ): Promise<Page<SyncCheckObservation>>;
+  fetchSyncPlan(targetId: string, planId?: string): Promise<SyncPlanResponse>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
   fetchSyncStatus(targetId: string): Promise<SyncStatus>;
@@ -507,6 +569,27 @@ export function createPanelApi(
       return (await response.json()) as PanelViewer;
     },
 
+    async fetchInstallation(signal?: AbortSignal): Promise<string | null> {
+      const body = await jsonRequest<{ installation_url: unknown }>('/api/v1/installation', {
+        signal,
+      });
+      if (body.installation_url === null) return null;
+      if (typeof body.installation_url !== 'string')
+        throw new TypeError('Invalid installation link');
+      const url = new URL(body.installation_url);
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        !url.host ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        !/^\/(?:apps|github-apps)\/[^/]+\/installations\/new$/u.test(url.pathname)
+      )
+        throw new TypeError('Invalid installation link');
+      return url.href;
+    },
+
     async fetchTargets(): Promise<PanelTarget[]> {
       const body = await jsonRequest<{ targets: PanelTarget[] }>('/api/v1/targets');
       return body.targets;
@@ -559,6 +642,27 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/queue${query}`);
     },
 
+    previewDeliveryRecovery(
+      targetId: string,
+      deliveryId: string,
+      root: boolean,
+    ): Promise<DeliveryRecoveryPreview> {
+      return jsonRequest(
+        `/api/v1/${root ? 'root/workspaces' : 'targets'}/${pathSegment(targetId)}/deliveries/${pathSegment(deliveryId)}/recovery`,
+      );
+    },
+    retryDelivery(
+      targetId: string,
+      deliveryId: string,
+      root: boolean,
+      input: DeliveryRecoveryRequest,
+    ): Promise<DeliveryRecoveryResult> {
+      return postJson(
+        `/api/v1/${root ? 'root/workspaces' : 'targets'}/${pathSegment(targetId)}/deliveries/${pathSegment(deliveryId)}/recovery`,
+        input,
+      );
+    },
+
     fetchRootQueueItem(itemId: string): Promise<QueueDetail> {
       return jsonRequest(`/api/v1/root/queue/${pathSegment(itemId)}`);
     },
@@ -595,6 +699,55 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}/actions/preview`,
         input,
       );
+    },
+
+    async previewScheduleDate(
+      input: SchedulePreviewInput,
+      signal?: AbortSignal,
+    ): Promise<ScheduleDatePreview> {
+      const preview = parseScheduleDatePreview(
+        await jsonRequest<unknown>('/api/v1/schedule-preview', {
+          method: 'POST',
+          body: JSON.stringify(input),
+          signal,
+        }),
+      );
+      if (preview.date !== input.date || preview.timezone !== input.profile.timezone)
+        throw new Error('Schedule preview does not match the requested date and timezone');
+      return preview;
+    },
+
+    async resolveScheduleLocalTime(
+      timezone: string,
+      localTime: string,
+      signal?: AbortSignal,
+    ): Promise<LocalTimeResolution> {
+      const query = new URLSearchParams({ timezone, local_time: localTime });
+      const result = parseLocalTimeResolution(
+        await jsonRequest<unknown>(`/api/v1/schedule-local-time?${query}`, { signal }),
+      );
+      if (
+        result.timezone !== timezone ||
+        result.local_time !== localTime ||
+        result.options.some(
+          (option) => option.timezone !== timezone || option.local_time.slice(0, 16) !== localTime,
+        )
+      )
+        throw new Error('Local time resolution does not match the requested time');
+      return result;
+    },
+    async previewScheduleTimezone(
+      timezone: string,
+      at: string,
+      signal?: AbortSignal,
+    ): Promise<ScheduleTimezonePreview> {
+      const query = new URLSearchParams({ timezone, at });
+      const preview = parseScheduleTimezonePreview(
+        await jsonRequest<unknown>(`/api/v1/schedule-timezone?${query}`, { signal }),
+      );
+      if (preview.timezone !== timezone || Date.parse(preview.at) !== Date.parse(at))
+        throw new Error('Timezone preview does not match the requested time');
+      return preview;
     },
 
     async fetchRootScheduleProfiles(): Promise<ScheduleProfile[]> {
@@ -699,10 +852,7 @@ export function createPanelApi(
       );
     },
 
-    runSyncNow(
-      targetId: string,
-      input: { expected_revision: number; reason: string },
-    ): Promise<SyncRunNowResponse> {
+    runSyncNow(targetId: string, input: SyncRunNowInput): Promise<SyncRunNowResponse> {
       return postJson(`/api/v1/targets/${pathSegment(targetId)}/sync/run-now`, input);
     },
 
@@ -1164,8 +1314,56 @@ export function createPanelApi(
       );
     },
 
-    fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }> {
-      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plan`);
+    fetchSyncHistory(
+      targetId: string,
+      request: { limit: number; cursor?: string },
+    ): Promise<Page<SyncPlanSummary>> {
+      const params = new URLSearchParams({ limit: String(request.limit) });
+      if (request.cursor) params.set('cursor', request.cursor);
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plans?${params}`);
+    },
+
+    fetchSyncRequests(
+      targetId: string,
+      request: { limit: number; cursor?: string },
+    ): Promise<SyncRequestHistory> {
+      const params = new URLSearchParams({ limit: String(request.limit) });
+      if (request.cursor) params.set('cursor', request.cursor);
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/requests?${params}`);
+    },
+
+    fetchSyncOperation(
+      targetId: string,
+      action: 'check' | 'dispatch',
+      requestKey: string,
+    ): Promise<SyncOperationResponse> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/requests/${pathSegment(action)}/${pathSegment(requestKey)}`,
+      );
+    },
+
+    fetchSyncCheck(targetId: string, checkId: string): Promise<SyncCheckResponse> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/checks/${pathSegment(checkId)}`,
+      );
+    },
+
+    fetchSyncCheckObservations(
+      targetId: string,
+      checkId: string,
+      request: { limit: number; cursor?: string },
+    ): Promise<Page<SyncCheckObservation>> {
+      const params = new URLSearchParams({ limit: String(request.limit) });
+      if (request.cursor) params.set('cursor', request.cursor);
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/checks/${pathSegment(checkId)}/observations?${params}`,
+      );
+    },
+
+    fetchSyncPlan(targetId: string, planId?: string): Promise<SyncPlanResponse> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/${planId === undefined ? 'plan' : `plans/${pathSegment(planId)}`}`,
+      );
     },
 
     fetchSyncStatus(targetId: string): Promise<SyncStatus> {
@@ -1462,6 +1660,7 @@ async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
   let message = describeStatus(response.status);
   let kind: string | undefined;
+  let field: string | undefined;
   let conflicts: WorkspaceSettingsConflict[] = [];
   try {
     const text = await response.text();
@@ -1475,9 +1674,10 @@ async function readError(response: Response): Promise<PanelApiError> {
       message = body.error.message;
     }
     kind = body.error?.kind;
+    field = typeof body.error?.field === 'string' ? body.error.field : undefined;
     conflicts = preserved.error?.conflicts ?? [];
   } catch {
     // Proxies and crashes are not required to understand the panel envelope.
   }
-  return new PanelApiError(response.status, code, message, kind, conflicts);
+  return new PanelApiError(response.status, code, message, kind, conflicts, field);
 }

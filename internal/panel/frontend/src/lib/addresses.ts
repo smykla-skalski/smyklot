@@ -90,7 +90,40 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
-  /* One ruleset's own page, a level below its list. */
+  if (route.view === 'sync' && route.syncRequest !== undefined) {
+    return resolve('/workspace/[account]/sync/request/[action=syncRequestAction]/[request]', {
+      account,
+      action: route.syncRequest.action,
+      request: encodeURIComponent(route.syncRequest.requestKey),
+    });
+  }
+
+  /* A selected result has a stable address after leaving the live slot. */
+  if (route.view === 'sync' && route.syncCheck !== undefined && route.syncPlan !== undefined) {
+    return resolve('/workspace/[account]/sync/check/[check]/result/[plan]', {
+      account,
+      check: encodeURIComponent(route.syncCheck),
+      plan: encodeURIComponent(route.syncPlan),
+    });
+  }
+  if (route.view === 'sync' && route.syncCheck !== undefined) {
+    return resolve('/workspace/[account]/sync/check/[check]', {
+      account,
+      check: encodeURIComponent(route.syncCheck),
+    });
+  }
+  if (route.view === 'sync' && route.sync === 'history' && route.syncPlan !== undefined) {
+    return resolve('/workspace/[account]/sync/history/[plan]', {
+      account,
+      plan: encodeURIComponent(route.syncPlan),
+    });
+  }
+  if (route.view === 'sync' && route.sync === 'plan' && route.syncPlan !== undefined) {
+    return resolve('/workspace/[account]/sync/plan/[plan]', {
+      account,
+      plan: encodeURIComponent(route.syncPlan),
+    });
+  }
   if (route.view === 'sync' && route.sync === 'rulesets' && route.syncRuleset !== undefined) {
     return resolve('/workspace/[account]/sync/rulesets/[ruleset]', {
       account,
@@ -262,6 +295,30 @@ export function panelRouteAt(
       return { account, view: 'sync', sync: asSyncSection(section) };
     case '/workspace/[account]/sync/rulesets/[ruleset]':
       return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
+    case '/workspace/[account]/sync/check/[check]/result/[plan]':
+      return {
+        account,
+        view: 'sync',
+        sync: 'plan',
+        syncCheck: params.check ?? '',
+        syncPlan: params.plan ?? '',
+      };
+    case '/workspace/[account]/sync/request/[action=syncRequestAction]/[request]':
+      return {
+        account,
+        view: 'sync',
+        sync: 'overview',
+        syncRequest: {
+          action: params.action as 'check' | 'dispatch',
+          requestKey: params.request ?? '',
+        },
+      };
+    case '/workspace/[account]/sync/check/[check]':
+      return { account, view: 'sync', sync: 'overview', syncCheck: params.check ?? '' };
+    case '/workspace/[account]/sync/history/[plan]':
+      return { account, view: 'sync', sync: 'history', syncPlan: params.plan ?? '' };
+    case '/workspace/[account]/sync/plan/[plan]':
+      return { account, view: 'sync', sync: 'plan', syncPlan: params.plan ?? '' };
     case '/workspace/[account]/sync/files/[...file=syncFilePath]': {
       /* SvelteKit has already decoded every segment in the rest parameter.
          Decoding again turns a literal percent sequence into another name -

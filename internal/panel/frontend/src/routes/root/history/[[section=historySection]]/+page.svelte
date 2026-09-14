@@ -57,14 +57,17 @@
   }
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <HistoryPanel
+    checkEvidenceApi={session.api}
+    recoveryApi={session.api}
     context="root"
     targetId="root"
     {section}
     fetchAudit={session.api.fetchRootAudit}
     exportAudit={session.api.rootAuditExportHref}
     fetchFailures={session.api.fetchRootFailures}
+    fetchQueueItem={session.api.fetchRootQueueItem}
     fetchSettingsCheckpoint={session.api.fetchRootWorkspaceSettingsCheckpoint}
     restoreSettingsCheckpoint={session.api.restoreRootWorkspaceSettingsCheckpoint}
     fetchRootSettingsCheckpoint={session.api.fetchRootRuntimeSettingsCheckpoint}
@@ -77,4 +80,4 @@
     onRootSettingsRestored={runtimeSettingsRestored}
     repositoryHref={repositoryPage}
   />
-</section>
+</div>

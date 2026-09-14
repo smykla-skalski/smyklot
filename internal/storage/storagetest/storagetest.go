@@ -17,6 +17,9 @@ type Harness struct {
 	// the spec closes what it returns.
 	Open func(ctx context.Context) storage.Store
 
+	// RemoveQueueItem models retained failure history without its older queue record.
+	RemoveQueueItem func(ctx context.Context, itemID string)
+
 	// RejectSecurityNotifications makes the next write to the notification
 	// table fail, so a spec can prove that an elevated write rolls back whole
 	// rather than leaving the change without its notifications. Engines break
