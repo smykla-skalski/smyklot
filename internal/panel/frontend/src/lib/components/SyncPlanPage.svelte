@@ -350,31 +350,44 @@ baseline, operation counts and the promise on the apply bar, scope on
 the button.
 -->
 
+{#snippet checkRecovery()}
+  <section class="check-recovery" aria-label="Repository check recovery">
+    <p>{checkGuidance}</p>
+    <div class="check-recovery-actions">
+      <Button
+        row
+        disabled={!checkIntent || runNowBusy || runNowBlocked}
+        onclick={openCheckConfirmation}>Check repositories</Button
+      >
+      {#if checkBlocker?.kind === 'plan' && checkBlocker.id !== plan?.id && onOpenBlockingPlan}
+        <Button row onclick={() => onOpenBlockingPlan?.(checkBlocker!.id)}
+          >View current changes</Button
+        >
+      {/if}
+      {#if checkBlocker?.kind === 'check' && onOpenRunningCheck}
+        <Button row onclick={() => onOpenRunningCheck?.(checkBlocker!.id)}
+          >View running check</Button
+        >
+      {/if}
+      {#if onRefresh}
+        <Button row disabled={refreshing} onclick={refreshStatus}
+          >{refreshing ? 'Refreshing…' : 'Refresh status'}</Button
+        >
+      {/if}
+    </div>
+  </section>
+{/snippet}
+
 <div class="view-frame">
   {#if !embedded}<PageHeader id="sync-plan-heading" section="Sync" title="Sync details" />{/if}
 
   {#if plan === null || total === 0}
-    <!-- Having no plan is a state, not a verdict: the page-tier heading and the
-         paragraph under it were the loaded page's shape worn by the empty one.
-         `Check drift now` is the panel's one act rather than a button beside a
-         headline about nothing. -->
-    <Card>
-      <div class="state-panel">
-        <span
-          ><strong>No sync is in progress</strong> Smyklot checks saved configuration and syncs changes
-          automatically</span
-        >
-        {#if canControl}
-          <Button
-            tone="signal"
-            disabled={runNowBusy || runNowBlocked || !checkIntent}
-            onclick={openCheckConfirmation}
-            >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
-          >
-        {/if}
-      </div>
-      <p>{checkGuidance}</p>
-    </Card>
+    <div class="hero">
+      <h2 bind:this={statusHeading} tabindex="-1">
+        {plan === null ? 'No changes to review' : 'This result contains no changes'}
+      </h2>
+    </div>
+    {@render checkRecovery()}
   {:else}
     <div class="hero">
       <h2 bind:this={statusHeading} tabindex="-1">
@@ -403,34 +416,10 @@ the button.
     {#if dispatchGuidance && (executionProblem || ['approved', 'applying'].includes(plan.state))}
       <div class="execution-guidance">
         <p id="dispatch-guidance" class="dispatch-guidance">{dispatchGuidance}</p>
-        {#if executionProblem && onRefresh}
-          <Button row disabled={refreshing} onclick={refreshStatus}
-            >{refreshing ? 'Refreshing…' : 'Refresh status'}</Button
-          >
-        {/if}
       </div>
     {/if}
     {#if needsCheckRecovery}
-      <section class="check-recovery" aria-label="Repository check recovery">
-        <p>{checkGuidance}</p>
-        <div class="check-recovery-actions">
-          <Button
-            row
-            disabled={!checkIntent || runNowBusy || runNowBlocked}
-            onclick={openCheckConfirmation}>Check repositories</Button
-          >
-          {#if checkBlocker?.kind === 'plan' && checkBlocker.id !== plan.id && onOpenBlockingPlan}
-            <Button row onclick={() => onOpenBlockingPlan?.(checkBlocker!.id)}
-              >View current changes</Button
-            >
-          {/if}
-          {#if checkBlocker?.kind === 'check' && onOpenRunningCheck}
-            <Button row onclick={() => onOpenRunningCheck?.(checkBlocker!.id)}
-              >View running check</Button
-            >
-          {/if}
-        </div>
-      </section>
+      {@render checkRecovery()}
     {/if}
     {#if plan.queue_item !== undefined && executionProblem === null}
       {@const queued = plan.queue_item}
