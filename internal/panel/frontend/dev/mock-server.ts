@@ -5888,6 +5888,17 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
     : {
         targets: uniqueQueueValues(items, (item) => item.target_id),
         repositories: uniqueQueueValues(items, (item) => item.repository_id),
+        repository_names: Object.fromEntries(
+          items
+            .filter((item) => item.repository_id)
+            .map((item) => [item.repository_id!, item.repository_name ?? '']),
+        ),
+        profile_names: Object.fromEntries(
+          items.map((item) => [
+            item.profile_id ?? 'immediate',
+            item.profile_id ? (item.profile_name ?? '') : 'Immediate',
+          ]),
+        ),
         profiles: uniqueQueueValues(items, (item) => item.profile_id ?? 'immediate'),
         states: uniqueQueueValues(items, (item) => item.state),
         workloads: uniqueQueueValues(items, (item) => item.kind),

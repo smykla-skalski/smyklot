@@ -391,12 +391,14 @@ type Filter struct {
 }
 
 type Facets struct {
-	Targets      []string   `json:"targets"`
-	Repositories []string   `json:"repositories"`
-	Profiles     []string   `json:"profiles"`
-	States       []State    `json:"states"`
-	Kinds        []Kind     `json:"workloads"`
-	Priorities   []Priority `json:"priorities"`
+	RepositoryNames map[string]string `json:"repository_names,omitempty"`
+	ProfileNames    map[string]string `json:"profile_names,omitempty"`
+	Targets         []string          `json:"targets"`
+	Repositories    []string          `json:"repositories"`
+	Profiles        []string          `json:"profiles"`
+	States          []State           `json:"states"`
+	Kinds           []Kind            `json:"workloads"`
+	Priorities      []Priority        `json:"priorities"`
 }
 
 type Page struct {

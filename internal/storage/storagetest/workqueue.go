@@ -248,6 +248,8 @@ func declareQueueListingSpecs(runtime queueRuntime) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(page.Items).To(HaveLen(1))
 		Expect(page.Items[0].RepositoryName).To(Equal("smykla-skalski/smyklot"))
+		Expect(page.Facets.RepositoryNames).To(HaveKeyWithValue("repo-1", "smykla-skalski/smyklot"))
+		Expect(page.Facets.ProfileNames).To(HaveKeyWithValue(*page.Items[0].ProfileID, page.Items[0].ProfileName))
 
 		item, err := store.GetQueueItem(ctx, itemID)
 		Expect(err).NotTo(HaveOccurred())
@@ -267,6 +269,12 @@ func declareQueueListingSpecs(runtime queueRuntime) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(page.Items).To(BeEmpty())
 		Expect(page.Total).To(BeZero())
+		Expect(page.Facets.RepositoryNames).To(HaveKeyWithValue("repo-1", "smykla-skalski/smyklot"))
+		missingTarget := "not-this-workspace"
+		page, err = store.ListWorkQueue(ctx, workqueue.Filter{TargetID: &missingTarget})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Facets.RepositoryNames).To(BeEmpty())
+		Expect(page.Facets.ProfileNames).To(BeEmpty())
 	})
 
 	It("lists what finished lately rather than what was created lately", func() {

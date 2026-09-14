@@ -258,6 +258,7 @@ func queueFilters(filter workqueue.Filter) ([]string, []any) {
 }
 
 func (s *Store) queueFacets(ctx context.Context, targetID *string) (workqueue.Facets, error) {
+	var err error
 	facets := emptyQueueFacets()
 	queries := []struct {
 		expression string
@@ -276,6 +277,14 @@ func (s *Store) queueFacets(ctx context.Context, targetID *string) (workqueue.Fa
 		}
 	}
 
+	facets.RepositoryNames, err = s.queueFacetNames(ctx, targetID, false)
+	if err != nil {
+		return workqueue.Facets{}, err
+	}
+	facets.ProfileNames, err = s.queueFacetNames(ctx, targetID, true)
+	if err != nil {
+		return workqueue.Facets{}, err
+	}
 	return facets, nil
 }
 

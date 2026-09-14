@@ -506,6 +506,8 @@ export interface QueuePage {
   facets: {
     targets: string[];
     repositories: string[];
+    repository_names?: Record<string, string>;
+    profile_names?: Record<string, string>;
     profiles: string[];
     states: QueueState[];
     workloads: QueueWorkload[];
