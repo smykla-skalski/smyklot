@@ -1,3 +1,4 @@
+import { mockQueueActions, projectMockQueueItem } from './queue-capabilities';
 import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
 import { scheduleHoursProblems } from '../src/lib/schedule-validation';
 import {
@@ -5945,7 +5946,7 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
   const nextOffset = offset + limit < filtered.length ? offset + limit : 0;
 
   return {
-    items: structuredClone(page),
+    items: structuredClone(page.map(projectMockQueueItem)),
     next_offset: nextOffset,
     total: filtered.length,
     facets,
@@ -6011,7 +6012,7 @@ function mockQueueDetail(item: QueueItem): QueueDetail {
     });
   }
 
-  return { item: structuredClone(item), events };
+  return { item: structuredClone(projectMockQueueItem(item)), events };
 }
 
 function applyMockQueueAction(
@@ -6021,6 +6022,13 @@ function applyMockQueueAction(
   targetID?: string,
 ): QueueItem {
   const item = findMockQueueItem(items, encodedID, targetID);
+  if (!mockQueueActions(item).includes(input.type)) {
+    throw new MockApiError(
+      409,
+      'unsupported_action',
+      'the action is not available in the current state',
+    );
+  }
   const index = items.indexOf(item);
   if (item.revision !== input.expected_revision) {
     throw new MockApiError(409, 'conflict', 'queue item changed; reload and try again');
@@ -6060,7 +6068,7 @@ function applyMockQueueAction(
   }
   items[index] = updated;
 
-  return structuredClone(updated);
+  return structuredClone(projectMockQueueItem(updated));
 }
 
 function previewMockQueueAction(
