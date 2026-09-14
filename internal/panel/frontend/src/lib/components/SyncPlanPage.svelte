@@ -181,8 +181,25 @@
     };
   }
 
-  const failedOf = (group: Group): number =>
-    group.actions.filter((action) => action.state === 'failed').length;
+  function outcomeSummary(group: Group): string {
+    return [
+      ['applied', 'succeeded'],
+      ['failed', 'failed'],
+      ['skipped', 'skipped'],
+      ['pending', 'pending'],
+    ]
+      .map(([state, label]) => {
+        const count = group.actions.filter((action) => action.state === state).length;
+        return count > 0 ? `${count} ${label}` : null;
+      })
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  const hasExecution = $derived(
+    (plan !== null && ['applying', 'applied', 'failed'].includes(plan.state)) ||
+      actions.some((action) => action.state !== 'pending'),
+  );
 
   /* ---------- One row's words ---------- */
 
@@ -533,7 +550,6 @@ the button.
         {#each groups as group, index (group.repository)}
           {@const visible = visibleOf(group)}
           {@const counts = groupCounts(group)}
-          {@const groupFailed = failedOf(group)}
           {@const open = isOpen(group.repository, index)}
           {@const rowsId = `plan-group-${index}`}
           <li>
@@ -549,11 +565,10 @@ the button.
                 <span class="object-name-row">
                   <span class="object-name mono-name">{group.repository}</span>
                 </span>
+                {#if hasExecution}<span class="object-sum">{outcomeSummary(group)}</span>{/if}
               </span>
               <span class="object-side">
-                {#if groupFailed > 0}
-                  <span class="pill pill-danger"><span class="t">{groupFailed} failed</span></span>
-                {:else}
+                {#if !hasExecution}
                   <span class="repo-group-counts">
                     {#if counts.add > 0}<span class="count-add">+{counts.add}</span>{/if}
                     {#if counts.chg > 0}<span class="count-chg">~{counts.chg}</span>{/if}
@@ -1378,11 +1393,6 @@ the button.
     gap: 0.25rem;
     line-height: var(--leading-flat);
     padding: 0 0.5rem;
-  }
-
-  .pill .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
   }
 
   .pill-danger {

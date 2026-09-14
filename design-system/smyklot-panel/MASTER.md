@@ -166,6 +166,10 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - A processed count includes successful, failed and skipped actions. Show their
   outcome breakdown so progress never implies success. Derive the primary count
   from the same action records as that breakdown; queue snapshots belong in details
+- After execution starts, collapsed repository groups show their recorded outcome
+  breakdown, including pending work. Planned add/change/remove counts are not an
+  execution result. Group summaries cover the whole repository even when its rows
+  are filtered by category
 - Put the current outcome, blockers, active progress and available action before
   optional execution diagnostics. Use the shared native disclosure for timing,
   queue priority and attempt details; keep its controls keyboard accessible.

@@ -213,6 +213,34 @@ describe('desktop dispatch capability guidance', () => {
                 path: join(directory, `F33-action-outcomes-${mode}-${theme}.png`),
               });
           }
+          const repository = inspector.getByRole('button', {
+            name: 'platform-infra 2 succeeded · 1 failed · 1 skipped · 2 pending',
+            exact: true,
+          });
+          await repository.click();
+          expect(await repository.getAttribute('aria-expanded')).toBe('false');
+          expect(await inspector.getByText('Succeeded', { exact: true }).count()).toBe(0);
+          await inspector
+            .getByRole('button', { name: 'api-gateway 5 pending', exact: true })
+            .waitFor();
+          await inspector
+            .getByRole('button', { name: 'auth-service 3 pending', exact: true })
+            .waitFor();
+          const summaryDirectory = process.env.SMYKLOT_SYNC_GROUP_OUTCOME_SCREENSHOTS;
+          if (summaryDirectory) {
+            await mkdir(summaryDirectory, { recursive: true });
+            await page.mouse.move(1900, 20);
+            await page.screenshot({
+              path: join(summaryDirectory, `F33-group-outcomes-${theme}.png`),
+            });
+          }
+          await repository.click();
+          expect(await repository.getAttribute('aria-expanded')).toBe('true');
+          await inspector.getByText('Succeeded', { exact: true }).waitFor();
+          if (summaryDirectory)
+            await page.screenshot({
+              path: join(summaryDirectory, `F33-group-outcomes-expanded-${theme}.png`),
+            });
           expect(posts).toBe(0);
         }
         if (reason === 'available') {
