@@ -93,9 +93,10 @@ export function queueLine(item: QueueItem, now: number): QueueLine {
     case 'failed':
     case 'cancelled':
     case 'superseded': {
-      const finished = item.finished_at ?? item.updated_at;
+      const finished = item.finished_at;
+      if (!finished) return { lead: `${words(item.state)} · ${detail} · finish time unavailable` };
       return {
-        lead: `${detail} ·`,
+        lead: `${words(item.state)} · ${detail} ·`,
         when: { relative: ago(finished, now), ...instant(finished, item) },
       };
     }
