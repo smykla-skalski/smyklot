@@ -20,6 +20,7 @@
     removeLabel,
     options,
     disabled = false,
+    descriptionId,
     draft = false,
     focusOnMount = false,
     validateKey,
@@ -34,6 +35,8 @@
     removeLabel: string;
     options: readonly PairOption[];
     disabled?: boolean;
+    /** A shared explanation for the owning pair collection. */
+    descriptionId?: string;
     draft?: boolean;
     focusOnMount?: boolean;
     validateKey: (key: string) => string | null;
@@ -112,7 +115,9 @@ The value half uses the same Bits combobox primitive as account suggestions.
         value={keyText}
         aria-label={keyLabel}
         aria-invalid={problem !== null || undefined}
-        aria-describedby={problem === null ? undefined : `${instanceId}-problem`}
+        aria-describedby={[descriptionId, problem === null ? undefined : `${instanceId}-problem`]
+          .filter(Boolean)
+          .join(' ') || undefined}
         placeholder="alias"
         autocomplete="off"
         spellcheck="false"
@@ -150,6 +155,7 @@ The value half uses the same Bits combobox primitive as account suggestions.
         <Combobox.Input
           class="pair-input pair-value-input"
           aria-label={valueLabel}
+          aria-describedby={descriptionId}
           placeholder="command"
           autocomplete="off"
           spellcheck="false"

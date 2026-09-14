@@ -516,6 +516,7 @@ account again.
             >
               {#each aliasEntries as [name, command] (name)}
                 <PairEntry
+                  descriptionId={problemId('command_aliases')}
                   keyValue={name}
                   value={command}
                   keyLabel="Alias {name}"

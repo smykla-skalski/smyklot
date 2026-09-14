@@ -122,6 +122,35 @@ describe('ConfigEditor drafts [Component]', () => {
     expect(onChange).toHaveBeenCalledWith({ allow_draft_merges: true }, 'allow_draft_merges');
   });
 
+  it('describes both alias inputs alongside local validation', async () => {
+    const { rerender } = render(ConfigEditor, {
+      patch: { command_aliases: { ship: 'merge', lgtm: 'approve' } },
+      inherited: CONFIG,
+      scope: 'runtime',
+      idPrefix: 'errors',
+      section: 'commands',
+      onChange: vi.fn(),
+      serverProblems: { command_aliases: 'Alias map rejected' },
+    });
+    const key = screen.getByLabelText('Alias ship');
+    const value = screen.getByRole('combobox', { name: 'Command for alias ship' });
+    const description = key.getAttribute('aria-describedby')!;
+    expect(document.getElementById(description)?.textContent).toBe('Alias map rejected');
+    expect(value.getAttribute('aria-describedby')).toBe(description);
+    await fireEvent.input(key, { target: { value: 'lgtm' } });
+    await fireEvent.blur(key);
+    expect(key.getAttribute('aria-invalid')).toBe('true');
+    const descriptions = key.getAttribute('aria-describedby')!.split(' ');
+    expect(descriptions).toHaveLength(2);
+    expect(descriptions.map((id) => document.getElementById(id)?.textContent)).toEqual([
+      'Alias map rejected',
+      'That alias already exists',
+    ]);
+    await rerender({ serverProblems: {} });
+    expect(value.getAttribute('aria-describedby')).toBeNull();
+    expect(key.getAttribute('aria-describedby') ?? '').not.toContain(description);
+  });
+
   function aliases() {
     const onChange = vi.fn();
     const onValidity = vi.fn();
