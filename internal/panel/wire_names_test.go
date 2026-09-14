@@ -136,7 +136,7 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	profileID := workqueue.AlwaysOpenProfileID
 	if _, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
 		ID: "wire-name-queue", Kind: workqueue.KindPathRefresh,
-		Lane: workqueue.LaneMaintenance, TargetID: &targetID,
+		Lane: workqueue.LaneMaintenance, TargetID: &targetID, RepositoryID: new(repository),
 		Title: "Refresh which paths are watched", State: workqueue.StateReady,
 		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
 		ProfileID: &profileID, NotBefore: harness.now,
@@ -277,6 +277,17 @@ func assertWireNames(t *testing.T, where string, value any) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, nested := range typed {
+			// These two string dictionaries use durable IDs as keys, not
+			// response field names. Keep the exception at the exact facet
+			// boundary and reject objects masquerading as display names.
+			if strings.HasSuffix(where, "/queue.facets.repository_names") ||
+				strings.HasSuffix(where, "/queue.facets.profile_names") {
+				if _, ok := nested.(string); !ok {
+					t.Errorf("%s[%q]: display name must be a string, got %T", where, key, nested)
+				}
+
+				continue
+			}
 			if !wireName.MatchString(key) {
 				t.Errorf(
 					"%s: %q is not a wire name - a Go struct is going out untagged, and the "+
