@@ -442,6 +442,14 @@
     return `Remove ${name}?`;
   }
 
+  function actionConfirmLabel(): string {
+    if (pendingAction === 'promote_root') return 'Make operator';
+    if (pendingAction === 'demote_root') return 'Remove operator role';
+    if (pendingAction === 'restore') return 'Restore account';
+    if (pendingAction === 'ban') return 'Ban account';
+    return 'Remove account';
+  }
+
   function actionDescription(): string {
     if (pendingAction === 'promote_root') {
       return 'An operator reads the whole service and may enter any workspace - every visit is announced and audited';
@@ -450,7 +458,9 @@
       return 'What they own and what they were given stay exactly as they are';
     }
     if (pendingAction === 'restore') return 'The account can sign in again with retained access';
-    if (pendingAction === 'ban') return 'Every active session is revoked immediately';
+    if (pendingAction === 'ban') {
+      return 'Sign-in is blocked for this account, and every active session is revoked immediately';
+    }
     return 'Sessions, assignments, and invitations are revoked. Audit identity is retained';
   }
 
@@ -667,6 +677,8 @@ refuse.
   open={actionUser !== null && pendingAction !== null}
   title={actionTitle()}
   description={actionDescription()}
+  confirmLabel={actionConfirmLabel()}
+  beforeClose={() => !saving}
   returnFocus={actionTrigger}
   onClose={closeUserAction}
   onConfirm={() => void confirmUserAction()}
@@ -677,6 +689,7 @@ refuse.
     <label class="reason-field">
       <span>Reason (optional)</span>
       <textarea
+        disabled={saving}
         placeholder="Add context to the immutable audit record"
         maxlength="500"
         rows="4"

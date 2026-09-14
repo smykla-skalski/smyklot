@@ -323,7 +323,7 @@
 
   let decisionTrigger = $state<HTMLElement | null>(null);
   /** Which choice card the decision dialog is standing on, before it is applied. */
-  let decisionPick = $state<string | null>(null);
+  let decisionDraftPick = $state<string | null>(null);
   let reason = $state('');
   let invitationActionTrigger = $state<HTMLElement | null>(null);
   let invitationBusy = $state<string | null>(null);
@@ -346,6 +346,9 @@
      removed. */
   const addModalOpen = $derived(dialogRoute.isOpen(ADD_DIALOG));
   const decisionUser = $derived(findUser(dialogRoute.param(DECISION_DIALOG, 'user')));
+  const decisionPick = $derived(
+    decisionDraftPick ?? (decisionUser === null ? null : decisionCurrent(decisionUser)),
+  );
   const pendingInvitation = $derived(
     findInvitation(dialogRoute.param(INVITATION_DIALOG, 'invitation')),
   );
@@ -564,9 +567,7 @@
     if (user.status === 'banned') {
       parts.push(`banned${since(user.banned_at)} - sign-in is refused everywhere`);
     } else if (access?.suspended === true) {
-      parts.push(
-        `suspended${since(access.updated_at)} - sign-in is refused until an administrator lifts it`,
-      );
+      parts.push(`suspended${since(access.updated_at)} - access to this workspace is suspended`);
     } else if (shownRole(user) === 'none') {
       parts.push(`access removed${since(access?.updated_at)} - the audit holds the reason`);
     } else if (access?.source === 'root') {
@@ -891,7 +892,7 @@
     if (decisionUser !== null) return;
     untrack(() => {
       reason = '';
-      decisionPick = null;
+      decisionDraftPick = null;
     });
   });
 
@@ -964,11 +965,15 @@
     switch (decisionKind(user)) {
       case 'suspension':
         return [
-          { value: 'keep', title: 'Keep suspended', why: 'Sign-in stays refused' },
+          {
+            value: 'keep',
+            title: 'Keep suspended',
+            why: 'Access to this workspace stays suspended',
+          },
           {
             value: 'restore',
-            title: 'Lift the suspension',
-            why: 'They can open this workspace again straight away',
+            title: 'Restore workspace access',
+            why: 'Restores their existing role in this workspace',
           },
         ];
       case 'restore':
@@ -990,7 +995,7 @@
           {
             value: 'suspend',
             title: 'Suspend access',
-            why: 'Sign-in is refused until an administrator lifts it',
+            why: 'Blocks this workspace until an administrator restores access',
           },
         ];
     }
@@ -1011,30 +1016,33 @@
     }
   }
 
-  /** The verb names the act, never a generic Save. */
+  /** Name the selected consequence, including unchanged choices. */
   function decisionVerb(user: PanelUser): string {
-    switch (decisionKind(user)) {
-      case 'suspension':
-        return 'Decide the suspension';
-      case 'restore':
-        return 'Restore access';
-      default:
-        return 'Change the access';
+    if (decisionPick === 'suspend') return 'Suspend workspace access';
+    if (decisionPick === 'restore') return 'Restore workspace access';
+    if (decisionPick === 'role:none') return 'Remove workspace access';
+    if (decisionPick === 'keep') {
+      return decisionKind(user) === 'suspension' ? 'Keep suspended' : 'Keep access removed';
     }
+    const role = roleLabel((decisionPick?.slice(5) ?? selectedRole(user)) as WorkspaceRole);
+    return decisionKind(user) === 'restore' ? `Restore as ${role}` : `Set role to ${role}`;
   }
 
   function openDecision(user: PanelUser, trigger: HTMLElement): void {
     decisionTrigger = trigger;
+    actionFailure = null;
     reason = '';
-    decisionPick = decisionCurrent(user);
+    decisionDraftPick = decisionCurrent(user);
     dialogRoute.open(DECISION_DIALOG, { user: user.account.login });
   }
 
   function closeDecision(): void {
+    if (savingAccount !== null) return;
     if (dialogRoute.isOpen(DECISION_DIALOG)) dialogRoute.close();
   }
 
   async function applyDecision(): Promise<void> {
+    if (savingAccount !== null) return;
     const user = decisionUser;
     const pick = decisionPick;
     if (user === null || pick === null || pick === decisionCurrent(user)) {
@@ -1061,7 +1069,7 @@
   function decisionFeedback(user: PanelUser, pick: string): string {
     const handle = `@${user.account.login}`;
     if (pick === 'suspend') return `Suspended ${handle} for ${targetName}`;
-    if (pick === 'restore') return `Lifted the suspension of ${handle}`;
+    if (pick === 'restore') return `Restored workspace access for ${handle} in ${targetName}`;
     if (pick === 'role:none') return `Removed ${handle} from ${targetName}`;
     return `${handle} is now ${roleLabel(pick.slice(5) as WorkspaceRole)} in ${targetName}`;
   }
@@ -1591,6 +1599,9 @@ offering it.
     open
     label={`Access details for @${historyUser.account.login}`}
     scopeLabel={targetName}
+    scopeDescription={historyUser.status === 'banned'
+      ? 'This account is banned from signing in. The history below covers this workspace.'
+      : `These access decisions affect ${targetName}. Account sign-in and other workspaces are unaffected.`}
     status={statusLabel(historyUser)}
     reason={currentReason(historyUser)}
     decidedAt={currentDecisionAt(historyUser)}
@@ -1771,12 +1782,15 @@ offering it.
     id={DECISION_DIALOG}
     open
     title={decisionTitle(user)}
-    description={decisionKind(user) === 'suspension'
-      ? (currentReason(user) ?? 'The audit holds the reason')
-      : undefined}
+    description={`Only access to ${targetName} changes. Account sign-in and other workspaces are unaffected.`}
+    beforeClose={() => savingAccount === null}
     returnFocus={decisionTrigger}
     onClose={closeDecision}
   >
+    {#if decisionKind(user) === 'suspension' && currentReason(user)}
+      <p class="form-help">Suspension reason: {currentReason(user)}</p>
+    {/if}
+    {#if actionFailure !== null}<p class="form-error" role="alert">{actionFailure}</p>{/if}
     <!-- One radiogroup, because these are answers to one question rather than a menu
          of separate acts: what standing should this person have. Each card says what
          it does, so nothing has to be tried to find out. -->
@@ -1786,9 +1800,10 @@ offering it.
           <input
             type="radio"
             name="access-decision"
+            disabled={savingAccount !== null}
             value={choice.value}
             checked={decisionPick === choice.value}
-            onchange={() => (decisionPick = choice.value)}
+            onchange={() => (decisionDraftPick = choice.value)}
           />
           <span class="choice-dot"></span>
           <span class="choice-title">{choice.title}</span>
@@ -1802,6 +1817,7 @@ offering it.
         <span>Reason (optional)</span>
         <textarea
           class="reason-textarea"
+          disabled={savingAccount !== null}
           placeholder="Add context for other administrators"
           maxlength="500"
           rows="3"
@@ -1811,7 +1827,7 @@ offering it.
     {/if}
 
     {#snippet footer()}
-      <Button onclick={closeDecision}>Cancel</Button>
+      <Button disabled={savingAccount !== null} onclick={closeDecision}>Cancel</Button>
       <Button
         tone={decisionPick === 'suspend' || decisionPick === 'role:none' ? 'stop' : 'signal'}
         disabled={savingAccount !== null || decisionPick === decisionCurrent(user)}

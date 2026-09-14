@@ -12,6 +12,7 @@
     open,
     label,
     scopeLabel,
+    scopeDescription,
     status,
     reason,
     decidedAt,
@@ -23,6 +24,7 @@
     open: boolean;
     label: string;
     scopeLabel: string;
+    scopeDescription: string;
     status: string;
     reason?: string;
     decidedAt?: string;
@@ -94,7 +96,7 @@ page behind them.
   id="decision-history"
   {open}
   title={label}
-  description="Current state and earlier administrator decisions"
+  description={scopeDescription}
   {returnFocus}
   onClose={close}
 >
@@ -105,7 +107,7 @@ page behind them.
     </div>
     <div>
       <dt>Scope</dt>
-      <dd title={scopeLabel}>Workspace</dd>
+      <dd>{scopeLabel}</dd>
     </div>
     <div>
       <dt>Decided</dt>
