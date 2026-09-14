@@ -482,18 +482,20 @@
     }
   }
 
+  async function refreshSyncQueries(requestTargetId: string): Promise<void> {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['sync-plan', requestTargetId] }),
+      queryClient.invalidateQueries({ queryKey: ['sync-status', requestTargetId] }),
+    ]);
+  }
+
   async function onApprove(planId: string, digest: string): Promise<void> {
+    const requestTargetId = targetId;
     approving = true;
     error = null;
     try {
-      queryClient.setQueryData(
-        ['sync-plan', targetId],
-        await approvePlan(targetId, planId, digest),
-      );
-      await Promise.all([
-        statusQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId, planId] }),
-      ]);
+      await approvePlan(requestTargetId, planId, digest);
+      await refreshSyncQueries(requestTargetId);
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -503,11 +505,12 @@
 
   /** Throwing a plan away asks nothing on GitHub - the next sweep recomputes. */
   async function onDiscard(planId: string): Promise<void> {
+    const requestTargetId = targetId;
     discarding = true;
     error = null;
     try {
-      await discardPlan(targetId, planId);
-      await Promise.all([planQuery.refetch(), statusQuery.refetch(), selectedPlanQuery.refetch()]);
+      await discardPlan(requestTargetId, planId);
+      await refreshSyncQueries(requestTargetId);
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -567,13 +570,6 @@
           runNotice =
             'Your request to run these changes was accepted. Open the changes to see their current result.';
         } else receipts.say('Your request to run these changes was accepted');
-        void queryClient.invalidateQueries({ queryKey: ['sync-plan', requestTargetId] });
-      }
-      if (response.plan !== undefined) {
-        queryClient.setQueryData(['sync-plan', requestTargetId], { plan: response.plan });
-        queryClient.setQueryData(['sync-plan', requestTargetId, response.plan.id], {
-          plan: response.plan,
-        });
       }
       if (response.status === 'changes_pending')
         runNotice =
@@ -581,6 +577,7 @@
       if (response.status === 'approval_required')
         runNotice = 'These changes need approval before they can run.';
       if (response.status === 'already_running') runNotice = 'These changes are already running.';
+      await refreshSyncQueries(requestTargetId);
     } catch (cause) {
       if (
         !recovering &&
