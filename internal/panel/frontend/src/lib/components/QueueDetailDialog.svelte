@@ -92,32 +92,18 @@ not.
       </div>
     {/if}
     <div>
-      <dt>Job</dt>
-      <dd>{workloadTitle(detail.item.kind)}</dd>
-    </div>
-    <div>
       <dt>
         {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
           ? 'Original run state'
-          : 'State'}
+          : terminal
+            ? 'Outcome'
+            : 'State'}
       </dt>
       <dd>{words(detail.item.state)}</dd>
     </div>
     <div>
       <dt>Scope</dt>
       <dd>{scope(detail.item)}</dd>
-    </div>
-    <div>
-      <dt>Priority</dt>
-      <dd>{words(detail.item.priority)}</dd>
-    </div>
-    <div>
-      <dt>Hours</dt>
-      <dd>
-        {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
-          ? ` · ${detail.item.profile_timezone}`
-          : ''}
-      </dd>
     </div>
     {#if detail.item.started_at}
       <div>
@@ -156,18 +142,10 @@ not.
         <dd>{detail.item.work_ahead}</dd>
       </div>
     {/if}
-    <div>
-      <dt>Attempts</dt>
-      <dd>{detail.item.attempt}</dd>
-    </div>
-    <div>
-      <dt>Revision</dt>
-      <dd>{detail.item.revision}</dd>
-    </div>
   </dl>
 
   <section class="workload-detail" aria-labelledby="queue-workload-detail">
-    <h3 id="queue-workload-detail">What this job is doing</h3>
+    <h3 id="queue-workload-detail">About this occurrence</h3>
     {#if detail.item.kind === 'webhook_delivery'}
       {#if detail.item.details}
         <p>
@@ -206,6 +184,38 @@ not.
       <p><strong>Action reason:</strong> {detail.item.reason}</p>
     {/if}
   </section>
+
+  <DisclosureSection
+    title="Scheduling details"
+    description="Job type, priority, hours and record information"
+  >
+    <dl class="facts">
+      <div>
+        <dt>Job</dt>
+        <dd>{workloadTitle(detail.item.kind)}</dd>
+      </div>
+      <div>
+        <dt>Priority</dt>
+        <dd>{words(detail.item.priority)}</dd>
+      </div>
+      <div>
+        <dt>Hours</dt>
+        <dd>
+          {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
+            ? ` · ${detail.item.profile_timezone}`
+            : ''}
+        </dd>
+      </div>
+      <div>
+        <dt>Attempts</dt>
+        <dd>{detail.item.attempt}</dd>
+      </div>
+      <div>
+        <dt>Revision</dt>
+        <dd>{detail.item.revision}</dd>
+      </div>
+    </dl>
+  </DisclosureSection>
 
   <section class="timeline" aria-labelledby="queue-timeline">
     <h3 id="queue-timeline">Timeline</h3>

@@ -45,9 +45,17 @@ it.each(['light', 'dark'] as const)(
           .click();
         const completed = page.getByRole('dialog', { name: 'Refresh the list of repositories' });
         await completed.getByText('Finished', { exact: true }).waitFor();
+        await completed.getByText('Outcome', { exact: true }).waitFor();
+        expect(await completed.getByText('Revision', { exact: true }).isVisible()).toBe(false);
+        expect(await completed.getByText('What this job is doing', { exact: true }).count()).toBe(
+          0,
+        );
         expect(await completed.getByText('Estimated start', { exact: true }).count()).toBe(0);
         expect(await completed.getByText('Succeeded', { exact: true }).count()).toBeGreaterThan(0);
         await capture(scope === 'root' ? 'root-completed' : 'workspace-completed');
+        await completed.getByText('Scheduling details', { exact: true }).click();
+        await completed.getByText('Revision', { exact: true }).waitFor();
+        await capture(scope === 'root' ? 'root-completed-details' : 'workspace-completed-details');
         await page.keyboard.press('Escape');
         await completed.waitFor({ state: 'hidden' });
       }
