@@ -1601,6 +1601,10 @@ async function handle(
       );
       return;
     }
+    if (path === route('/api/v1/installation') && method === 'GET') {
+      respond(res, 200, { installation_url: 'https://github.com/apps/smyklot/installations/new' });
+      return;
+    }
     if (path === route('/api/v1/schedule-preview') && method === 'POST') {
       const preview = await state.fileRenderer.previewSchedule(
         await readBody<SchedulePreviewInput>(req),
