@@ -184,6 +184,13 @@ it.each(['light', 'dark'] as const)(
             .getByRole('button', { name: 'Refresh', exact: true })
             .evaluate((node) => node === document.activeElement),
         ).toBe(true);
+        expect(await dialog.getByText('Estimated start', { exact: true }).count()).toBe(0);
+        expect(await dialog.getByText('Work ahead', { exact: true }).count()).toBe(0);
+        await dialog
+          .getByText('Not confirmed. The blocker must clear before this occurrence can start.', {
+            exact: true,
+          })
+          .waitFor();
         await capture(`${prefix}-inspector-recovered`);
         await page.keyboard.press('Escape');
       }

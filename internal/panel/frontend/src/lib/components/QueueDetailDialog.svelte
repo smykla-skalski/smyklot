@@ -127,6 +127,11 @@ not.
           {detail.item.finished_at ? absolute(detail.item.finished_at) : 'Finish time unavailable'}
         </dd>
       </div>
+    {:else if detail.item.state === 'blocked'}
+      <div>
+        <dt>Start time</dt>
+        <dd>Not confirmed. The blocker must clear before this occurrence can start.</dd>
+      </div>
     {:else if detail.item.state !== 'running'}
       <div>
         <dt>Can start from, in your timezone</dt>
