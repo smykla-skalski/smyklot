@@ -17,13 +17,21 @@ func validSyncDispatch(request orgsync.PlanDispatch) bool {
 		request.ExpectedRevision > 0 && strings.TrimSpace(request.Reason) != "" && !request.Now.IsZero()
 }
 
-// FindSyncPlanDispatch reads immutable acceptance. The caller must authorize
-// the actor and target before calling, including when a plan no longer exists.
+// FindSyncPlanDispatch reads immutable acceptance under current session and
+// workspace authority, including when a plan no longer exists.
 func (s *Store) FindSyncPlanDispatch(ctx context.Context, request orgsync.PlanDispatch) (orgsync.PlanDispatchReceipt, error) {
 	if !validSyncDispatch(request) {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
-	return syncDispatchReceipt(ctx, s.db, request)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return orgsync.PlanDispatchReceipt{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.authorizeSyncDispatch(ctx, tx, request); err != nil {
+		return orgsync.PlanDispatchReceipt{}, err
+	}
+	return syncDispatchReceipt(ctx, tx, request)
 }
 
 // DispatchSyncPlan checks the selected source and revision in the transaction
@@ -40,6 +48,9 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	// Serialize with maintenance leasing before acquiring plan and queue locks.
 	// Plan-before-queue matches configuration invalidation and plan decisions.
 	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
+		return orgsync.PlanDispatchReceipt{}, err
+	}
+	if err := s.authorizeSyncDispatch(ctx, tx, request); err != nil {
 		return orgsync.PlanDispatchReceipt{}, err
 	}
 	receipt, err := syncDispatchReceipt(ctx, tx, request)
@@ -98,4 +109,8 @@ func syncDispatchReceipt(ctx context.Context, reader runner, request orgsync.Pla
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	return orgsync.PlanDispatchReceipt{PlanID: plan, QueueID: queue, AcceptedAt: accepted.Time()}, nil
+}
+
+func (s *Store) authorizeSyncDispatch(ctx context.Context, tx *transaction, request orgsync.PlanDispatch) error {
+	return s.authorizeWorkspaceCommand(ctx, tx, workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: request.TargetID, RequestedAt: request.Now})
 }

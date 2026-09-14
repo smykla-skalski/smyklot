@@ -27,14 +27,21 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			account := testAccount(now)
 			Expect(store.UpsertAccount(ctx, account)).To(Succeed())
 			Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{testInstallation(account, now, nil)})).To(Succeed())
+			_, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{AccountID: account.ID, ActorAccountID: account.ID, ChangedAt: now})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.CreateSession(ctx, storage.Session{TokenHash: "dispatch-session", AccountID: account.ID, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour)}, 2)).To(Succeed())
 			plan, err := store.CreateSyncPlan(ctx, orgsync.PlanCreate{ID: "dispatch-plan", TargetID: "github:installation:100", ActorID: account.ID, Trigger: orgsync.TriggerManual, Digest: "reviewed", Automatic: true, Now: now, ExpiresAt: now.Add(time.Hour)})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.State).To(Equal(orgsync.PlanApproved))
 			before, err = store.GetQueueItem(ctx, "sync-plan:"+plan.ID)
 			Expect(err).NotTo(HaveOccurred())
-			request = orgsync.PlanDispatch{TargetID: plan.TargetID, PlanID: plan.ID, ActorID: account.ID, RequestKey: "dispatch-1", ExpectedRevision: before.Revision, Reason: "Apply reviewed changes", Now: now}
+			request = orgsync.PlanDispatch{TargetID: plan.TargetID, PlanID: plan.ID, ActorID: account.ID, SessionTokenHash: "dispatch-session", RequestKey: "dispatch-1", ExpectedRevision: before.Revision, Reason: "Apply reviewed changes", Now: now}
 		})
 		AfterEach(func() { cancel() })
+
+		declareSyncDispatchAuthoritySpecs(func() (context.Context, storage.Store, time.Time, orgsync.PlanDispatch, workqueue.Item) {
+			return ctx, store, now, request, before
+		})
 
 		It("accepts once and preserves the exact receipt without changing events", func() {
 			_, err := store.FindSyncPlanDispatch(ctx, request)
@@ -49,6 +56,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			Expect(current.Revision).To(Equal(before.Revision + 1))
 			Expect(current.Immediate).To(BeTrue())
 			request.Now = now.Add(2 * time.Hour)
+			Expect(store.ReconcileInstallation(ctx, testInstallation(testAccount(request.Now), request.Now, nil))).To(Succeed())
 			repeated, err := store.DispatchSyncPlan(ctx, request)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
@@ -63,8 +71,11 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 		It("binds actor key to target plan revision and reason", func() {
 			_, err := store.DispatchSyncPlan(ctx, request)
 			Expect(err).NotTo(HaveOccurred())
+			other := testInstallation(testAccount(now), now, nil)
+			other.TargetID, other.InstallationID = "github:installation:101", "101"
+			Expect(store.ReconcileInstallation(ctx, other)).To(Succeed())
 			for _, change := range []func(*orgsync.PlanDispatch){
-				func(r *orgsync.PlanDispatch) { r.TargetID = "another-target" },
+				func(r *orgsync.PlanDispatch) { r.TargetID = "github:installation:101" },
 				func(r *orgsync.PlanDispatch) { r.PlanID = "another-plan" },
 				func(r *orgsync.PlanDispatch) { r.ExpectedRevision++ },
 				func(r *orgsync.PlanDispatch) { r.Reason = "different" },
@@ -78,7 +89,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			}
 			request.ActorID = "other-actor"
 			_, err = store.FindSyncPlanDispatch(ctx, request)
-			Expect(err).To(MatchError(storage.ErrNotFound))
+			Expect(err).To(MatchError(storage.ErrRevoked))
 		})
 
 		It("retains acceptance after discard pruning and newer work", func() {
@@ -105,7 +116,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			Expect(read).To(Equal(accepted))
 		})
 
-		It("rolls back scheduling and events when receipt ownership is invalid", func() {
+		It("rejects unknown actors without changing scheduling or events", func() {
 			request.ActorID = "missing-account"
 			events, err := store.ListQueueEvents(ctx, before.ID, 100)
 			Expect(err).NotTo(HaveOccurred())
@@ -117,9 +128,6 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			after, err := store.ListQueueEvents(ctx, before.ID, 100)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(after).To(Equal(events))
-			Expect(store.UpsertAccount(ctx, storage.Account{ID: request.ActorID, Provider: "github", SubjectID: "missing-account", Login: "owner"})).To(Succeed())
-			_, err = store.DispatchSyncPlan(ctx, request)
-			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("rejects expired stale running and wrong-workspace requests without acceptance", func() {
