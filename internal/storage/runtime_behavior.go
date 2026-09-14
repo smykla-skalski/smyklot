@@ -29,6 +29,9 @@ func NewRuntimeBehavior(patch config.Patch) (RuntimeBehavior, error) {
 	return RuntimeBehavior{patch: decoded}, nil
 }
 
+// IsEmpty reports whether every field inherits from the deployment.
+func (value RuntimeBehavior) IsEmpty() bool { return len(value.patch.SetKeys()) == 0 }
+
 // Resolve layers only explicit values onto the current deployment and returns a
 // deep copy. Equal-value overrides remain pinned when deployment defaults change.
 func (value RuntimeBehavior) Resolve(deployment *config.Config) *config.Config {
@@ -78,6 +81,11 @@ func (value *RuntimeBehavior) UnmarshalJSON(content []byte) error {
 		// values for fields absent in old records. Normalize collections to copies.
 		var legacy config.Config
 		if err = json.Unmarshal(content, &legacy); err == nil {
+			if legacy.Runner != "" {
+				if _, runnerErr := config.ParseRunner(string(legacy.Runner)); runnerErr != nil {
+					return runnerErr
+				}
+			}
 			patch = config.ApplyPatch(&legacy, config.Patch{}).AsPatch()
 			patch.Runner = nil
 			var normalized RuntimeBehavior

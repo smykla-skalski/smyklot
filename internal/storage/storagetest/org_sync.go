@@ -897,7 +897,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 					botConfig := config.Default()
 					botConfig.Formatting.Common.LineEnding = "crlf"
 					_, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
-						BotConfig: botConfig, EffectiveSessionTTL: time.Hour,
+						BotConfig: runtimeBehavior(botConfig), EffectiveSessionTTL: time.Hour,
 						ActorAccountID: account.ID, ChangedAt: now,
 					})
 					Expect(err).NotTo(HaveOccurred())

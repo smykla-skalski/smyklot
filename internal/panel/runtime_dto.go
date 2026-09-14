@@ -9,9 +9,10 @@ import (
 )
 
 type runtimeConfigValueResponse struct {
-	Deployment config.Config  `json:"deployment"`
-	Override   *config.Config `json:"override"`
-	Effective  config.Config  `json:"effective"`
+	Deployment config.Config            `json:"deployment"`
+	Override   *config.Config           `json:"override"`
+	Intent     *storage.RuntimeBehavior `json:"intent"`
+	Effective  config.Config            `json:"effective"`
 }
 
 type runtimeDurationValueResponse struct {
@@ -82,8 +83,9 @@ func runtimeSettingsDTO(
 		BackgroundWorkPaused: settings.BackgroundWorkPaused,
 		BehaviorDefaults: runtimeConfigValueResponse{
 			Deployment: *cloneRuntimeConfig(cfg.ProcessConfig),
-			Override:   cloneOptionalRuntimeConfig(settings.BotConfig),
+			Override:   runtimeBehaviorLegacyView(settings.BotConfig, cfg.ProcessConfig),
 			Effective:  *cloneRuntimeConfig(effective.BotConfig),
+			Intent:     settings.BotConfig,
 		},
 		LogLevel: runtimeStringValueResponse{
 			Deployment: runtimeLogLevelName(cfg.LogLevel),
@@ -192,10 +194,12 @@ func runtimeServiceDTO(
 	return response
 }
 
-func cloneOptionalRuntimeConfig(value *config.Config) *config.Config {
+// The complete view serves older clients. New editors use Intent so they do not
+// infer ownership by comparing resolved values with deployment defaults.
+func runtimeBehaviorLegacyView(value *storage.RuntimeBehavior, deployment *config.Config) *config.Config {
 	if value == nil {
 		return nil
 	}
 
-	return cloneRuntimeConfig(value)
+	return value.Resolve(deployment)
 }

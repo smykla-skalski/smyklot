@@ -30,7 +30,7 @@ const MaxPathIndexInterval = 7 * 24 * time.Hour
 // defaults. Nil fields keep the corresponding deployment value.
 type RuntimeSettings struct {
 	BackgroundWorkPaused bool
-	BotConfig            *config.Config
+	BotConfig            *RuntimeBehavior
 	LogLevel             *string
 	PollInterval         *time.Duration
 	PendingCIQuietPeriod *time.Duration
@@ -51,7 +51,7 @@ type RuntimeSettings struct {
 // and appends its application-wide audit event.
 type RuntimeSettingsChange struct {
 	BackgroundWorkPaused          bool
-	BotConfig                     *config.Config
+	BotConfig                     *RuntimeBehavior
 	LogLevel                      *string
 	PollInterval                  *time.Duration
 	PendingCIQuietPeriod          *time.Duration

@@ -38,7 +38,7 @@ func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (Runtim
 		PathIndexInterval:    cfg.PathIndexInterval,
 	}
 	if persisted.BotConfig != nil {
-		values.BotConfig = cloneRuntimeConfig(persisted.BotConfig)
+		values.BotConfig = persisted.BotConfig.Resolve(cfg.ProcessConfig)
 		values.BotConfig.Runner = cfg.ProcessConfig.EffectiveRunner()
 	}
 	if persisted.LogLevel != nil {

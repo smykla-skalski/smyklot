@@ -10,7 +10,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
@@ -23,14 +22,14 @@ import (
 const MaxPathIndexInterval = storage.MaxPathIndexInterval
 
 type runtimeSettingsRequest struct {
-	BackgroundWorkPaused        requiredRuntimeValue[bool]          `json:"background_work_paused"`
-	BotConfig                   requiredRuntimeValue[config.Config] `json:"bot_config"`
-	LogLevel                    requiredRuntimeValue[string]        `json:"log_level"`
-	PollIntervalSeconds         requiredRuntimeValue[int64]         `json:"reaction_poll_interval_seconds"`
-	PendingCIQuietPeriodSeconds requiredRuntimeValue[int64]         `json:"merge_after_ci_quiet_period_seconds"`
-	PathIndexIntervalSeconds    requiredRuntimeValue[int64]         `json:"path_index_interval_seconds"`
-	SessionTTLSeconds           requiredRuntimeValue[int64]         `json:"session_ttl_seconds"`
-	ExpectedRevision            requiredRuntimeValue[int64]         `json:"expected_revision"`
+	BackgroundWorkPaused        requiredRuntimeValue[bool]            `json:"background_work_paused"`
+	BotConfig                   requiredRuntimeValue[json.RawMessage] `json:"bot_config"`
+	LogLevel                    requiredRuntimeValue[string]          `json:"log_level"`
+	PollIntervalSeconds         requiredRuntimeValue[int64]           `json:"reaction_poll_interval_seconds"`
+	PendingCIQuietPeriodSeconds requiredRuntimeValue[int64]           `json:"merge_after_ci_quiet_period_seconds"`
+	PathIndexIntervalSeconds    requiredRuntimeValue[int64]           `json:"path_index_interval_seconds"`
+	SessionTTLSeconds           requiredRuntimeValue[int64]           `json:"session_ttl_seconds"`
+	ExpectedRevision            requiredRuntimeValue[int64]           `json:"expected_revision"`
 }
 
 type requiredRuntimeValue[T any] struct {
@@ -130,7 +129,7 @@ func (s *Server) runtimeSettingsChange(
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
 			fmt.Errorf("every runtime setting and expected revision is required")
 	}
-	botConfig, err := s.runtimeBotConfig(input.BotConfig.value)
+	botConfig, err := decodeRuntimeBehavior(input.BotConfig.value)
 	if err != nil {
 		return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 	}
@@ -225,24 +224,6 @@ func runtimeOptionalInterval(
 	return runtimeDuration(seconds, minimum, maximum, label)
 }
 
-func (s *Server) runtimeBotConfig(input *config.Config) (*config.Config, error) {
-	if input == nil {
-		return nil, nil
-	}
-	// Runner is deployment-owned rather than a panel setting. An omitted runner
-	// is the canonical browser shape; an explicit value must still be valid.
-	if input.Runner != "" {
-		if _, err := config.ParseRunner(string(input.Runner)); err != nil {
-			return nil, fmt.Errorf("invalid behavior defaults: %w", err)
-		}
-	}
-
-	value := config.ApplyPatch(config.Default(), input.AsPatch())
-	value.Runner = s.cfg.ProcessConfig.EffectiveRunner()
-
-	return value, nil
-}
-
 func runtimeDuration(
 	seconds *int64,
 	minimum, maximum time.Duration,
@@ -263,4 +244,18 @@ func runtimeDuration(
 	}
 
 	return &value, nil
+}
+
+func decodeRuntimeBehavior(raw *json.RawMessage) (*storage.RuntimeBehavior, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var behavior storage.RuntimeBehavior
+	if err := json.Unmarshal(*raw, &behavior); err != nil {
+		return nil, fmt.Errorf("bot_config: %w", err)
+	}
+	if behavior.IsEmpty() {
+		return nil, nil
+	}
+	return &behavior, nil
 }

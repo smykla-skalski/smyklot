@@ -298,13 +298,19 @@ func (s *seeder) seedInvitation() error {
 func (s *seeder) seedRuntimeSettings() error {
 	botConfig := config.Default()
 	botConfig.QuietSuccess = true
+	patch := botConfig.AsPatch()
+	patch.Runner = nil
+	behavior, err := storage.NewRuntimeBehavior(patch)
+	if err != nil {
+		return err
+	}
 	logLevel := "debug"
 	pollInterval := 3 * time.Minute
 	pendingCIQuietPeriod := 45 * time.Second
 	sessionTTL := 12 * time.Hour
 
-	_, err := s.store.SaveRuntimeSettings(s.ctx, storage.RuntimeSettingsChange{
-		BotConfig:                     botConfig,
+	_, err = s.store.SaveRuntimeSettings(s.ctx, storage.RuntimeSettingsChange{
+		BotConfig:                     &behavior,
 		LogLevel:                      &logLevel,
 		PollInterval:                  &pollInterval,
 		PendingCIQuietPeriod:          &pendingCIQuietPeriod,

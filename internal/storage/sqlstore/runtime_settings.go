@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -39,6 +40,9 @@ func (s *Store) SaveRuntimeSettings(
 	ctx context.Context,
 	change storage.RuntimeSettingsChange,
 ) (storage.SaveRuntimeSettingsResult, error) {
+	if change.BotConfig != nil && change.BotConfig.IsEmpty() {
+		change.BotConfig = nil
+	}
 	botConfig, err := validateRuntimeSettingsChange(change)
 	if err != nil {
 		return storage.SaveRuntimeSettingsResult{}, err
@@ -104,11 +108,7 @@ func (s *Store) RestoreRuntimeSettings(
 			storage.ErrSettingsRestoreBlocked,
 		)
 	}
-	if document.BotConfig != nil {
-		botConfig := *document.BotConfig
-		botConfig.Runner = request.Runner
-		document.BotConfig = &botConfig
-	}
+
 	change := storage.RuntimeSettingsChange{
 		BackgroundWorkPaused: document.BackgroundWorkPaused,
 		BotConfig:            document.BotConfig, LogLevel: document.LogLevel,
@@ -121,6 +121,9 @@ func (s *Store) RestoreRuntimeSettings(
 		EffectivePollInterval:         request.EffectivePollInterval,
 		EffectivePathIndexInterval:    request.EffectivePathIndexInterval,
 		EffectiveSessionTTL:           request.EffectiveSessionTTL,
+	}
+	if change.BotConfig != nil && change.BotConfig.IsEmpty() {
+		change.BotConfig = nil
 	}
 	botConfig, err := validateRuntimeSettingsChange(change)
 	if err != nil {
@@ -242,17 +245,17 @@ func (s *Store) saveRuntimeSettings(
 	}, nil
 }
 
-func runtimeFormattingChanged(current, proposed *config.Config) bool {
-	currentPolicy := config.DefaultFormattingPolicy()
+func runtimeFormattingChanged(current, proposed *storage.RuntimeBehavior) bool {
+	var before, after *config.FormattingPatch
 	if current != nil {
-		currentPolicy = current.Formatting
+		before = current.Patch().Formatting
 	}
-	proposedPolicy := config.DefaultFormattingPolicy()
 	if proposed != nil {
-		proposedPolicy = proposed.Formatting
+		after = proposed.Patch().Formatting
 	}
-
-	return currentPolicy != proposedPolicy
+	// Storage has no deployment defaults. Compare ownership as well as values,
+	// invalidating conservatively when a leaf starts or stops inheriting.
+	return !reflect.DeepEqual(before, after)
 }
 
 func invalidatePlansForRuntimeFormatting(
@@ -459,11 +462,13 @@ SELECT background_work_paused, bot_config, log_level,
 		return storage.RuntimeSettings{}, err
 	}
 	if botConfig.Valid {
-		var value config.Config
+		var value storage.RuntimeBehavior
 		if err := json.Unmarshal([]byte(botConfig.String), &value); err != nil {
 			return storage.RuntimeSettings{}, fmt.Errorf("decode runtime bot config: %w", err)
 		}
-		settings.BotConfig = &value
+		if !value.IsEmpty() {
+			settings.BotConfig = &value
+		}
 	}
 	settings.LogLevel = stringPointer(logLevel)
 	settings.PollInterval = durationPointer(pollSeconds)

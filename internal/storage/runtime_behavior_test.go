@@ -90,6 +90,7 @@ func TestRuntimeBehaviorLegacyPinsCompleteConfig(t *testing.T) {
 func TestRuntimeBehaviorRejectsAmbiguousOverrides(t *testing.T) {
 	for _, document := range []string{
 		`{"version":2,"overrides":{}}`,
+		`{"runner":"unknown"}`,
 		`{"version":1,"overrides":{},"unknown":true}`,
 		`{"version":1}`,
 		`{"version":1,"overrides":null}`,
