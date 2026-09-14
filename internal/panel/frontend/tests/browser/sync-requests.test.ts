@@ -110,11 +110,11 @@ describe('desktop accepted request discovery', () => {
         releaseInitial();
         await dialog.getByText('Verify saved labels after review', { exact: true }).waitFor();
         expect(
-          await dialog.getByRole('link', { name: 'View check' }).getAttribute('href'),
-        ).toContain('/check/original-check');
+          await dialog.getByRole('link', { name: 'View request' }).nth(0).getAttribute('href'),
+        ).toContain('/request/check/check-key');
         expect(
-          await dialog.getByRole('link', { name: 'View changes' }).getAttribute('href'),
-        ).toContain('original-plan');
+          await dialog.getByRole('link', { name: 'View request' }).nth(1).getAttribute('href'),
+        ).toContain('/request/dispatch/dispatch-key');
         await capture('latest');
         await dialog.getByRole('button', { name: 'Older requests' }).click();
         await dialog.getByText('Earlier check before changing labels', { exact: true }).waitFor();
@@ -156,9 +156,9 @@ describe('desktop accepted request discovery', () => {
         await expect.poll(() => trigger.evaluate((el) => el === document.activeElement)).toBe(true);
         await page.reload();
         await trigger.click();
-        await dialog.getByRole('link', { name: 'View check', exact: true }).click();
-        await page.waitForURL(/\/check\/original-check$/u);
-        await page.getByRole('dialog', { name: 'Repository check', exact: true }).waitFor();
+        await dialog.getByRole('link', { name: 'View request', exact: true }).first().click();
+        await page.waitForURL(/\/request\/check\/check-key$/u);
+        await page.getByRole('dialog', { name: 'Sync request', exact: true }).waitFor();
         expect(await dialog.count()).toBe(0);
         expect(mutations).toBe(0);
       } finally {

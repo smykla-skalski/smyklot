@@ -51,6 +51,7 @@
 
   import SyncHistory from './SyncHistory.svelte';
   import SyncRequests from './SyncRequests.svelte';
+  import SyncOperationInspector from './SyncOperationInspector.svelte';
   import SyncCheckInspector from './SyncCheckInspector.svelte';
   import Link from './Link.svelte';
   import type { SyncCheckResponse } from '../types';
@@ -83,6 +84,12 @@
     fetchPlan,
     fetchHistory,
     fetchRequests,
+    fetchOperation,
+    selectedRequest = null,
+    requestHref,
+    onOpenRequest,
+    onCloseRequest,
+    onRequestsReady,
     historyResultHref,
     checkResultHref,
     onOpenCheck,
@@ -142,6 +149,12 @@
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     fetchRequests?: import('../api').PanelApi['fetchSyncRequests'];
+    fetchOperation?: import('../api').PanelApi['fetchSyncOperation'];
+    selectedRequest?: { action: 'check' | 'dispatch'; requestKey: string } | null;
+    requestHref?: (action: 'check' | 'dispatch', key: string) => string;
+    onOpenRequest?: (action: 'check' | 'dispatch', key: string) => void;
+    onCloseRequest?: () => Promise<void>;
+    onRequestsReady?: (element: HTMLButtonElement) => void;
     fetchHistory: (
       targetId: string,
       request: { limit: number; cursor?: string },
@@ -738,17 +751,16 @@ Live plan and status queries share the shell's event invalidation and polling fa
 
 {#snippet pageFeedback()}
   {#if !detailsVisible}{@render requestFeedback()}{/if}
-  {#if fetchRequests && actorId}
+  {#if fetchRequests && actorId && requestHref && onOpenRequest}
     {#key JSON.stringify([actorId, targetId])}
       <SyncRequests
         {actorId}
         {targetId}
         {nowMs}
         {fetchRequests}
-        {checkHref}
-        resultHref={historyResultHref}
-        {onOpenCheck}
-        onOpenResult={onOpenHistoryResult}
+        {requestHref}
+        {onOpenRequest}
+        onReady={onRequestsReady}
       />
     {/key}
   {/if}
@@ -951,6 +963,20 @@ Live plan and status queries share the shell's event invalidation and polling fa
       description="What every repository in this workspace should look like, and what Smyklot would change to make that true"
     />
   </section>
+{/if}
+
+{#if fetchOperation && selectedRequest}
+  {#key JSON.stringify([actorId, targetId, selectedRequest])}
+    <SyncOperationInspector
+      {actorId}
+      {targetId}
+      selection={selectedRequest}
+      {fetchOperation}
+      {checkHref}
+      resultHref={historyResultHref}
+      onClose={onCloseRequest ?? (() => onOpenSection('overview'))}
+    />
+  {/key}
 {/if}
 
 <SyncCheckInspector

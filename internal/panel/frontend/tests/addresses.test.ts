@@ -20,6 +20,16 @@ import { parsePanelRoute, type PanelRoute } from '../src/lib/routes.ts';
 const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, string> }> = [
   { route: { personal: 'inbox' }, id: '/inbox', params: {} },
   {
+    route: {
+      account: 'acme',
+      view: 'sync',
+      sync: 'overview',
+      syncRequest: { action: 'dispatch', requestKey: 'key/with space' },
+    },
+    id: '/workspace/[account]/sync/request/[action=syncRequestAction]/[request]',
+    params: { account: 'acme', action: 'dispatch', request: 'key/with space' },
+  },
+  {
     route: { account: 'acme', view: 'settings' },
     id: '/workspace/[account]/[view=panelView]',
     params: { account: 'acme', view: 'settings' },

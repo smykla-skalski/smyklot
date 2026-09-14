@@ -177,6 +177,13 @@ history is routed with its section. That is what makes an address like
             fetchPlan={session.api.fetchSyncPlan}
             fetchHistory={session.api.fetchSyncHistory}
             fetchRequests={session.api.fetchSyncRequests}
+            fetchOperation={session.api.fetchSyncOperation}
+            selectedRequest={session.currentSyncRequest}
+            onCloseRequest={() => session.closeSyncRequest()}
+            onRequestsReady={(element) =>
+              session.restoreSyncRequestFocus(session.selectedTarget!.id, element)}
+            requestHref={(action, key) => session.syncRequestHref(action, key)}
+            onOpenRequest={(action, key) => session.openSyncRequest(action, key)}
             historyResultHref={(id) => session.syncHistoryResultHref(id)}
             onOpenHistoryResult={(id) => session.openSyncPlan(id, true)}
             selectedCheckId={session.currentSyncCheck}

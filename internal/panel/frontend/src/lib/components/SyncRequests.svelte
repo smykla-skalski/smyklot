@@ -15,10 +15,9 @@
     targetId,
     nowMs,
     fetchRequests,
-    checkHref,
-    resultHref,
-    onOpenCheck,
-    onOpenResult,
+    requestHref,
+    onOpenRequest,
+    onReady,
   }: {
     actorId: string;
     targetId: string;
@@ -27,10 +26,9 @@
       target: string,
       request: { limit: number; cursor?: string },
     ) => Promise<SyncRequestHistory>;
-    checkHref: (id: string) => string;
-    resultHref: (id: string) => string;
-    onOpenCheck: (id: string) => void;
-    onOpenResult: (id: string) => void;
+    requestHref: (action: 'check' | 'dispatch', key: string) => string;
+    onOpenRequest: (action: 'check' | 'dispatch', key: string) => void;
+    onReady?: (element: HTMLButtonElement) => void;
   } = $props();
   let open = $state(false);
   let trigger = $state<HTMLButtonElement | null>(null);
@@ -67,14 +65,17 @@
     event.preventDefault();
     open = false;
     await tick();
-    if (item.action === 'check') onOpenCheck(item.check_id);
-    else onOpenResult(item.plan_id);
+    onOpenRequest(item.action, item.request_key);
   }
 </script>
 
 <div class="requests-entry">
-  <Button tone="quiet" bind:element={trigger} onclick={() => (open = true)}
-    >Your sync requests</Button
+  <Button
+    id="sync-requests-trigger"
+    {@attach (element) => onReady?.(element as HTMLButtonElement)}
+    tone="quiet"
+    bind:element={trigger}
+    onclick={() => (open = true)}>Your sync requests</Button
   >
 </div>
 <Modal
@@ -129,9 +130,8 @@
               <p class="request-reason">{item.reason}</p>
             </div>
             <Link
-              href={item.action === 'check' ? checkHref(item.check_id) : resultHref(item.plan_id)}
-              onclick={(event) => void inspect(event, item)}
-              >{item.action === 'check' ? 'View check' : 'View changes'}</Link
+              href={requestHref(item.action, item.request_key)}
+              onclick={(event) => void inspect(event, item)}>View request</Link
             >
           </li>
         {/each}

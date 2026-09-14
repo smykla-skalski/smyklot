@@ -243,6 +243,8 @@ export type WorkspaceRoute = {
   syncPlan?: string;
   /** Queued check selected over Sync status, or the origin of its selected result. */
   syncCheck?: string;
+  /** Original accepted request, independent of its worker or result retention. */
+  syncRequest?: { action: 'check' | 'dispatch'; requestKey: string };
   /** The Queue page the address names; absent means Active. */
   queue?: QueueSection;
   /** What is open on top of the view; see `route-dialogs`. */
@@ -584,12 +586,34 @@ function parseTrailingSync(
   view: string,
   segments: string[],
 ):
-  | Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan' | 'syncCheck'>
+  | Pick<
+      WorkspaceRoute,
+      'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan' | 'syncCheck' | 'syncRequest'
+    >
   | undefined
   | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
 
   const [rawSection, ...encodedRest] = segments;
+  if (rawSection === 'request') {
+    if (encodedRest.length !== 2 || !['check', 'dispatch'].includes(encodedRest[0]!))
+      return 'invalid';
+    try {
+      const requestKey = decodeURIComponent(encodedRest[1]!);
+      if (
+        !requestKey ||
+        requestKey.trim() !== requestKey ||
+        new TextEncoder().encode(requestKey).length > 200
+      )
+        return 'invalid';
+      return {
+        sync: 'overview',
+        syncRequest: { action: encodedRest[0] as 'check' | 'dispatch', requestKey },
+      };
+    } catch {
+      return 'invalid';
+    }
+  }
   if (rawSection === 'check') {
     if (encodedRest.length !== 1 && !(encodedRest.length === 3 && encodedRest[1] === 'result'))
       return 'invalid';

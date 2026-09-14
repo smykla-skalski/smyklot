@@ -517,3 +517,21 @@ it('retains both the originating check and exact result across address round tri
   expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/b/extra')).toBeNull();
   expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/%20')).toBeNull();
 });
+
+it('preserves exact sync request identity and rejects malformed selections', () => {
+  expect(parsePanelRoute('', '/workspace/acme/sync/request/check/key%2Fwith%20space')).toEqual({
+    account: 'acme',
+    view: 'sync',
+    sync: 'overview',
+    syncRequest: { action: 'check', requestKey: 'key/with space' },
+  });
+  for (const path of [
+    'request',
+    'request/check',
+    'request/retry/key',
+    'request/check/%20',
+    'request/check/a/b',
+    'request/check/%ZZ',
+  ])
+    expect(parsePanelRoute('', `/workspace/acme/sync/${path}`)).toBeNull();
+});

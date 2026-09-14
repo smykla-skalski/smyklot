@@ -90,6 +90,14 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
+  if (route.view === 'sync' && route.syncRequest !== undefined) {
+    return resolve('/workspace/[account]/sync/request/[action=syncRequestAction]/[request]', {
+      account,
+      action: route.syncRequest.action,
+      request: encodeURIComponent(route.syncRequest.requestKey),
+    });
+  }
+
   /* A selected result has a stable address after leaving the live slot. */
   if (route.view === 'sync' && route.syncCheck !== undefined && route.syncPlan !== undefined) {
     return resolve('/workspace/[account]/sync/check/[check]/result/[plan]', {
@@ -294,6 +302,16 @@ export function panelRouteAt(
         sync: 'plan',
         syncCheck: params.check ?? '',
         syncPlan: params.plan ?? '',
+      };
+    case '/workspace/[account]/sync/request/[action=syncRequestAction]/[request]':
+      return {
+        account,
+        view: 'sync',
+        sync: 'overview',
+        syncRequest: {
+          action: params.action as 'check' | 'dispatch',
+          requestKey: params.request ?? '',
+        },
       };
     case '/workspace/[account]/sync/check/[check]':
       return { account, view: 'sync', sync: 'overview', syncCheck: params.check ?? '' };

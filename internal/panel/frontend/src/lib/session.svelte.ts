@@ -85,6 +85,7 @@ export class PanelSession {
   readonly queryClient: QueryClient;
 
   loading = $state(true);
+  private syncRequestFocusTarget = $state<string | null>(null);
   viewer = $state.raw<PanelViewer | null>(null);
   targets = $state.raw<PanelTarget[]>([]);
   selectedId = $state<string | null>(null);
@@ -519,6 +520,49 @@ export class PanelSession {
       : null;
   }
 
+  get currentSyncRequest(): { action: 'check' | 'dispatch'; requestKey: string } | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncRequest ?? null)
+      : null;
+  }
+
+  syncRequestHref(action: 'check' | 'dispatch', requestKey: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'overview',
+          syncRequest: { action, requestKey },
+        });
+  }
+
+  openSyncRequest(action: 'check' | 'dispatch', requestKey: string): void {
+    const target = this.selectedTarget;
+    if (target !== null)
+      void this.navigate({
+        account: target.account.login,
+        view: 'sync',
+        sync: 'overview',
+        syncRequest: { action, requestKey },
+      });
+  }
+
+  async closeSyncRequest(): Promise<void> {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    await this.navigate(this.syncRoute(target, 'overview'));
+    this.syncRequestFocusTarget = target.id;
+  }
+
+  restoreSyncRequestFocus(targetId: string, element: HTMLButtonElement): void {
+    if (this.syncRequestFocusTarget !== targetId) return;
+    this.syncRequestFocusTarget = null;
+    if (this.selectedId === targetId && this.currentSyncRequest === null) element.focus();
+  }
+
   syncCheckHref(id: string): string {
     const target = this.selectedTarget;
     return target === null
@@ -587,7 +631,8 @@ export class PanelSession {
       this.currentSyncRuleset === null &&
       this.currentSyncFile === null &&
       this.currentSyncPlan === null &&
-      this.currentSyncCheck === null
+      this.currentSyncCheck === null &&
+      this.currentSyncRequest === null
     ) {
       return;
     }

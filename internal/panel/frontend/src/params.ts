@@ -49,6 +49,7 @@ function matching<T extends string = string>(pattern: string) {
  * reads this module with plain Node, which knows nothing of SvelteKit's aliases.
  */
 const MATCHERS = {
+  syncRequestAction: oneOf(['check', 'dispatch'] as const),
   /** The tables the Root console's access page is split into. */
   accessSection: oneOf(ACCESS_SECTIONS),
 
