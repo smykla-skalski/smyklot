@@ -65,6 +65,61 @@ describe('desktop hours draft protection', () => {
   });
 
   it.each(['light', 'dark'] as const)(
+    'preserves end-of-day closing times in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      try {
+        await page.route('**/api/v1/root/schedule-profiles', async (route) => {
+          const response = await route.fetch();
+          const document = await response.json();
+          const profile = document.profiles.find((entry: { system: boolean }) => !entry.system);
+          profile.name = 'Full Monday';
+          profile.windows = [{ weekday: 1, start_minute: 0, end_minute: 1440 }];
+          profile.exceptions = [];
+          await route.fulfill({ response, json: document });
+        });
+        let submitted: { windows: unknown[] } | undefined;
+        await page.route('**/api/v1/root/schedule-profiles/*', async (route) => {
+          if (route.request().method() === 'PUT') submitted = route.request().postDataJSON();
+          await route.continue();
+        });
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page
+          .getByRole('button', { name: 'Edit - the Full Monday profile', exact: true })
+          .click();
+        const editor = page.getByRole('dialog', { name: 'Edit hours profile', exact: true });
+        const endOfDay = editor.getByRole('checkbox', { name: 'Close at end of Monday (24:00)' });
+        expect(await endOfDay.isChecked()).toBe(true);
+        expect(await editor.getByLabel('Closes', { exact: true }).inputValue()).toBe('End of day');
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-end-of-day-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await endOfDay.uncheck();
+        await editor.getByLabel('Closes', { exact: true }).fill('17:00');
+        await endOfDay.check();
+        await endOfDay.uncheck();
+        expect(await editor.getByLabel('Closes', { exact: true }).inputValue()).toBe('17:00');
+        await endOfDay.check();
+        await editor.getByLabel('Profile name', { exact: true }).fill('Full Monday revised');
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.waitFor({ state: 'hidden' });
+        expect(submitted?.windows).toEqual([{ weekday: 1, start_minute: 0, end_minute: 1440 }]);
+      } finally {
+        await page.unrouteAll({ behavior: 'wait' });
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'explains invalid weekly rows and their recovery in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({
@@ -78,7 +133,7 @@ describe('desktop hours draft protection', () => {
         await editor.getByLabel('Profile name', { exact: true }).fill('Weekly validation');
         for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
           await editor.evaluate(async (node) => {
-            await Promise.all(
+            await Promise.allSettled(
               node.getAnimations({ subtree: true }).map((animation) => animation.finished),
             );
           });
