@@ -163,6 +163,10 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Ordinary dialogs are `560-640px` wide
 - Scrim uses 50-55% black plus restrained background blur
 - Use clear header, scrollable body, and sticky action footer
+- Put the current outcome, blockers, active progress and available action before
+  optional execution diagnostics. Use the shared native disclosure for timing,
+  queue priority and attempt details; keep its controls keyboard accessible.
+  Do not hide a blocker or the action needed to continue inside that disclosure
 - Preserve Escape, outside click, focus trap, and focus restoration
 - Confirm only when dismissal would discard unsaved work. Closing an inspector
   whose draft remains staged needs no confirmation

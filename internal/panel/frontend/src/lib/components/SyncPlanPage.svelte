@@ -24,6 +24,7 @@
   import Card from './Card.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
+  import DisclosureSection from './DisclosureSection.svelte';
   import Icon from './Icon.svelte';
   import Link from './Link.svelte';
   import LabelBadge from './LabelBadge.svelte';
@@ -430,7 +431,6 @@ the button.
         <div class="schedule-card-head">
           <h3 id="plan-schedule-title">Execution schedule</h3>
           <div class="schedule-card-actions">
-            <span class="schedule-state">{queued.state.replaceAll('_', ' ')}</span>
             {#if canControl && plan.state === 'approved'}
               <Button
                 row
@@ -442,53 +442,65 @@ the button.
             {/if}
           </div>
         </div>
+        <p class="schedule-summary">
+          {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
+        </p>
+        {#if queued.state === 'running'}
+          <p class="dispatch-guidance">
+            {queued.progress_current} of {queued.progress_total} processed · attempt {queued.attempt}
+          </p>
+        {:else if queued.state === 'retrying'}
+          <p class="dispatch-guidance">Retry attempt {queued.attempt}</p>
+        {/if}
         {#if dispatchIntent}
           <p class="dispatch-guidance">
             Run now skips the scheduling window. Execution starts when a worker is available.
           </p>
         {/if}
-        <dl class="schedule-facts">
-          <div>
-            <dt>Runs no earlier than</dt>
-            <dd>
-              <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
-              <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Hours</dt>
-            <dd>
-              {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
-              <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Estimated start</dt>
-            <dd>
-              {queued.estimated_start_at
-                ? formatDateTime(queued.estimated_start_at)
-                : 'Not estimated'}
-              <small
-                >{queued.work_ahead === 0
-                  ? 'Nothing ahead of it'
-                  : `${queued.work_ahead} items ahead`} · estimate</small
-              >
-            </dd>
-          </div>
-          <div>
-            <dt>Current status</dt>
-            <dd>
-              {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
-              <small
-                >{queued.state === 'running'
-                  ? `${plan.execution_stage} · attempt ${queued.attempt} · ${queued.progress_current} of ${queued.progress_total}`
-                  : queued.state === 'retrying'
-                    ? `Retry attempt ${queued.attempt}`
-                    : `${plan.execution_stage} · priority ${queued.priority}`}</small
-              >
-            </dd>
-          </div>
-        </dl>
+        <DisclosureSection title="Scheduling details" description="Timing and queue progress">
+          <dl class="schedule-facts">
+            <div>
+              <dt>Runs no earlier than</dt>
+              <dd>
+                <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
+                <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Hours</dt>
+              <dd>
+                {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
+                <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Estimated start</dt>
+              <dd>
+                {queued.estimated_start_at
+                  ? formatDateTime(queued.estimated_start_at)
+                  : 'Not estimated'}
+                <small
+                  >{queued.work_ahead === 0
+                    ? 'Nothing ahead of it'
+                    : `${queued.work_ahead} items ahead`} · estimate</small
+                >
+              </dd>
+            </div>
+            <div>
+              <dt>Current status</dt>
+              <dd>
+                {queued.state.replaceAll('_', ' ')}
+                <small
+                  >{queued.state === 'running'
+                    ? `${plan.execution_stage} · attempt ${queued.attempt} · ${queued.progress_current} of ${queued.progress_total}`
+                    : queued.state === 'retrying'
+                      ? `Retry attempt ${queued.attempt}`
+                      : `${plan.execution_stage} · priority ${queued.priority}`}</small
+                >
+              </dd>
+            </div>
+          </dl>
+        </DisclosureSection>
       </section>
     {/if}
 
@@ -883,18 +895,16 @@ the button.
   }
 
   .schedule-card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
+    display: grid;
+    gap: var(--space-3);
     margin-block-end: var(--space-4);
-    padding: var(--space-4);
   }
 
   .schedule-card-head {
     align-items: center;
     display: flex;
     justify-content: space-between;
-    margin-block-end: var(--space-4);
+    gap: var(--space-3);
   }
 
   .schedule-card-head h3 {
@@ -908,17 +918,15 @@ the button.
     gap: var(--space-3);
   }
 
-  .schedule-state {
+  .schedule-summary {
+    margin: 0;
     color: var(--text-secondary);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    text-transform: uppercase;
   }
 
   .schedule-facts {
     display: grid;
     gap: var(--space-4);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin: 0;
   }
 
