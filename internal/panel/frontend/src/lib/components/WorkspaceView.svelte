@@ -180,7 +180,7 @@ history is routed with its section. That is what makes an address like
             onOpenHistoryResult={(id) => session.openSyncPlan(id, true)}
             selectedCheckId={session.currentSyncCheck}
             checkHref={(id) => session.syncCheckHref(id)}
-            fetchCheck={(id) => session.api.fetchTargetQueueItem(session.selectedTarget!.id, id)}
+            fetchCheck={(id) => session.api.fetchSyncCheck(session.selectedTarget!.id, id)}
             checkResultHref={(checkId, planId) => session.syncCheckResultHref(checkId, planId)}
             onOpenCheck={(id) => session.openSyncCheck(id)}
             selectedPlanId={session.currentSyncPlan}

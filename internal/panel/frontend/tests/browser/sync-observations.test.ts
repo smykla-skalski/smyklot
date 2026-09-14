@@ -1,3 +1,4 @@
+import { checkResponse } from './sync-check-fixture';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -205,8 +206,8 @@ describe('desktop repository observation evidence', () => {
               progress_current: 0,
               progress_total: 0,
             };
-            await page.route('**/api/v1/targets/*/queue/scan%3Adesktop-check', (route) =>
-              route.fulfill({ json: { item: check, events: [] } }),
+            await page.route('**/api/v1/targets/*/sync/checks/scan%3Adesktop-check', (route) =>
+              route.fulfill({ json: checkResponse(check) }),
             );
             let requests = 0;
             await page.route('**/api/v1/targets/*/sync/run-now', (route) => {
@@ -228,11 +229,15 @@ describe('desktop repository observation evidence', () => {
             await captureRecovery('queued');
             await page.getByRole('link', { name: 'View check', exact: true }).click();
             const inspector = page.getByRole('dialog');
-            await inspector.getByRole('heading', { name: check.title, exact: true }).waitFor();
+            await inspector
+              .getByRole('heading', { name: 'Repository check', exact: true })
+              .waitFor();
             expect(new URL(page.url()).pathname).toContain('/sync/check/scan%3Adesktop-check');
             await captureRecovery('check-running');
             await page.reload();
-            await inspector.getByRole('heading', { name: check.title, exact: true }).waitFor();
+            await inspector
+              .getByRole('heading', { name: 'Repository check', exact: true })
+              .waitFor();
             check.summary = 'Checked 4 repository settings: 4 matched.';
             check.state = 'succeeded';
             await inspector
@@ -240,9 +245,9 @@ describe('desktop repository observation evidence', () => {
               .getByText(check.summary, { exact: true })
               .waitFor({ timeout: 20_000 });
             await captureRecovery('check-complete');
-            await inspector.getByRole('button', { name: 'Close', exact: true }).click();
+            await inspector.getByRole('button', { name: 'Close check', exact: true }).click();
             await page.waitForURL(/\/sync$/u);
-            await page.unroute('**/api/v1/targets/*/queue/scan%3Adesktop-check');
+            await page.unroute('**/api/v1/targets/*/sync/checks/scan%3Adesktop-check');
             status.repositories[0]!.cells.files = {
               state: 'in_step',
               observed_outcome: 'matched',

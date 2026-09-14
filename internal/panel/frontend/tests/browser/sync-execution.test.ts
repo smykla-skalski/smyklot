@@ -42,9 +42,7 @@ describe('desktop sync against the live development lifecycle', () => {
         expect(href).toContain('/sync/check/');
         await link.click();
         const inspector = page.getByRole('dialog');
-        await inspector
-          .getByRole('heading', { name: 'Check which repositories are in step', exact: true })
-          .waitFor();
+        await inspector.getByRole('heading', { name: 'Repository check', exact: true }).waitFor();
         await inspector.getByRole('heading', { name: 'Check in progress', exact: true }).waitFor();
         const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
         const capture = async (scene: string) => {
@@ -69,8 +67,10 @@ describe('desktop sync against the live development lifecycle', () => {
           .getByRole('heading', { name: 'Check finished with gaps', exact: true })
           .waitFor();
         await inspector.locator('summary').filter({ hasText: 'Execution details' }).click();
-        expect(await inspector.innerText()).toContain('Run now requested:');
-        await inspector.getByRole('button', { name: 'Close', exact: true }).click();
+        expect(await inspector.innerText()).toContain('Succeeded');
+        expect(await inspector.innerText()).toContain('Attempt');
+        expect(await inspector.innerText()).toContain('Finished');
+        await inspector.getByRole('button', { name: 'Close check', exact: true }).click();
         await page.waitForURL(/\/sync$/u);
         await page
           .getByRole('button', { name: 'platform-infra sync details', exact: true })

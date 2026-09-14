@@ -1,3 +1,4 @@
+import { checkResponse } from './sync-check-fixture';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,8 +67,8 @@ describe('desktop deferred-check blocker identity and return navigation', () => 
       let holdRead = false;
       let releaseRead: (() => void) | undefined;
       const requested: string[] = [];
-      await page.route('**/api/v1/targets/*/queue/scan%3Adeferred', (route) =>
-        route.fulfill({ json: { item: check, events: [] } }),
+      await page.route('**/api/v1/targets/*/sync/checks/scan%3Adeferred', (route) =>
+        route.fulfill({ json: checkResponse(check) }),
       );
       await page.route('**/api/v1/targets/*/sync/plan', (route) =>
         route.fulfill({ json: { plan: { ...syncPlanSeed(iso), id: 'newer-plan' } } }),
@@ -182,7 +183,7 @@ describe('desktop deferred-check blocker identity and return navigation', () => 
       await page.waitForURL(checkURL);
       delete (check.details.outcome as Record<string, unknown>).blocking_plan_id;
       await page.reload();
-      await page.getByRole('heading', { name: check.title, exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Repository check', exact: true }).waitFor();
       expect(await resultLink.count()).toBe(0);
       await page
         .getByText('This check did not record which earlier changes prevented it from proceeding', {

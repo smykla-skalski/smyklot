@@ -80,13 +80,13 @@ describe('desktop uncertain check recovery', () => {
         await link.click();
         await page
           .getByRole('dialog')
-          .getByRole('heading', { name: 'Check which repositories are in step', exact: true })
+          .getByRole('heading', { name: 'Repository check', exact: true })
           .waitFor();
         expect(decodeURIComponent(new URL(page.url()).pathname)).toContain(acceptedId);
         await page.reload();
         await page
           .getByRole('dialog')
-          .getByRole('heading', { name: 'Check which repositories are in step', exact: true })
+          .getByRole('heading', { name: 'Repository check', exact: true })
           .waitFor();
         await page
           .getByRole('dialog')

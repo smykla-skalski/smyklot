@@ -5,14 +5,21 @@
   import { formatDateTime } from '../format';
   import Link from './Link.svelte';
 
-  const { item, resultHref }: { item: QueueItem; resultHref?: (id: string) => string } = $props();
-  const details = $derived(item.kind === 'sync_scan' ? item.details : undefined);
+  const {
+    details,
+    execution,
+    resultHref,
+  }: {
+    details?: { outcome?: unknown; result_plan_id?: unknown } | null;
+    execution: Pick<QueueItem, 'state' | 'summary' | 'blocked_reason'> | null;
+    resultHref?: (id: string) => string;
+  } = $props();
   const outcome = $derived(checkOutcome(details?.outcome));
   const planId = $derived(
     typeof details?.result_plan_id === 'string' ? details.result_plan_id.trim() : '',
   );
   const terminal = $derived(
-    ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+    ['succeeded', 'failed', 'cancelled', 'superseded'].includes(execution?.state ?? ''),
   );
 </script>
 
@@ -25,7 +32,7 @@ repository details, and SyncOverview for current state rather than this snapshot
 -->
 <section class="check-summary" aria-label="Check outcome">
   {#if outcome}
-    <h3>{checkOutcomeTitle(outcome)}</h3>
+    <h3>{execution?.state === 'failed' ? 'Comparison recorded' : checkOutcomeTitle(outcome)}</h3>
     <p>{outcome.summary}</p>
     <p class="muted">
       Recorded <time datetime={outcome.completed_at}
@@ -57,23 +64,23 @@ repository details, and SyncOverview for current state rather than this snapshot
       </p>{/if}
   {:else}
     <h3>
-      {item.state === 'running'
+      {execution?.state === 'running'
         ? 'Check in progress'
-        : terminal
+        : terminal || execution === null
           ? 'Check outcome unavailable'
           : 'Waiting to check repositories'}
     </h3>
     <p>
-      {item.summary ??
-        (terminal
+      {execution?.summary ||
+        (terminal || execution === null
           ? 'No outcome summary was recorded.'
           : 'The result will appear here when the check finishes.')}
     </p>
-    {#if terminal}<p class="muted">
+    {#if terminal || execution === null}<p class="muted">
         This record has no retained comparison evidence. It does not confirm that repositories match
         their saved settings.
       </p>{/if}
-    {#if item.blocked_reason}<p>{item.blocked_reason}</p>{/if}
+    {#if execution?.blocked_reason}<p>{execution?.blocked_reason}</p>{/if}
   {/if}
   {#if outcome?.disposition === 'deferred'}
     {#if outcome.blocking_plan_id && resultHref}

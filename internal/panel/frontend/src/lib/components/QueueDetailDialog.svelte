@@ -230,7 +230,11 @@ not.
     <p class="detail-message detail-error" role="alert">{error}</p>
   {:else if detail !== null}
     {#if detail.item.kind === 'sync_scan'}
-      <SyncCheckSummary item={detail.item} resultHref={syncResultHref} />
+      <SyncCheckSummary
+        details={detail.item.details}
+        execution={detail.item}
+        resultHref={syncResultHref}
+      />
       {#if checkEvidence}{@render checkEvidence()}{/if}
       <DisclosureSection
         title="Execution details"

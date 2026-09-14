@@ -21,13 +21,13 @@
   const { Story } = defineMeta({
     title: 'Views/SyncCheckSummary',
     component: SyncCheckSummary,
-    args: { item },
+    args: { details: item.details, execution: item },
   });
 </script>
 
 <Story name="Mixed outcome" />
-<Story name="Legacy check" args={{ item: { ...item, details: {} } }} />
+<Story name="Legacy check" args={{ details: {} }} />
 <Story
   name="Running"
-  args={{ item: { ...item, state: 'running', summary: undefined, details: {} } }}
+  args={{ execution: { ...item, state: 'running', summary: undefined }, details: {} }}
 />

@@ -1,3 +1,4 @@
+import { checkResponse } from './sync-check-fixture';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -54,8 +55,8 @@ describe('desktop check result identity and return navigation', () => {
       };
       let missing = false;
       const requested: string[] = [];
-      await page.route('**/api/v1/targets/*/queue/scan%3Aoriginal', (route) =>
-        route.fulfill({ json: { item: check, events: [] } }),
+      await page.route('**/api/v1/targets/*/sync/checks/scan%3Aoriginal', (route) =>
+        route.fulfill({ json: checkResponse(check) }),
       );
       await page.route('**/api/v1/targets/*/sync/plan', (route) =>
         route.fulfill({ json: { plan: { ...syncPlanSeed(iso), id: 'newer-plan' } } }),
@@ -130,7 +131,7 @@ describe('desktop check result identity and return navigation', () => {
       await resultLink.waitFor();
       check.details = {};
       await page.reload();
-      await page.getByRole('heading', { name: check.title, exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Repository check', exact: true }).waitFor();
       expect(await resultLink.count()).toBe(0);
       await capture('unlinked');
     } finally {

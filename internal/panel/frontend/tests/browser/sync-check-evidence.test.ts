@@ -1,3 +1,4 @@
+import { checkResponse } from './sync-check-fixture';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,8 +67,8 @@ describe('desktop retained check evidence', () => {
           release = resolve;
         });
         const requests: string[] = [];
-        await page.route('**/api/v1/targets/*/queue/scan%3Aevidence', (route) =>
-          route.fulfill({ json: { item: check, events: [] } }),
+        await page.route('**/api/v1/targets/*/sync/checks/scan%3Aevidence', (route) =>
+          route.fulfill({ json: checkResponse(check) }),
         );
         await page.route('**/api/v1/targets/*/sync/checks/*/observations?*', async (route) => {
           const url = new URL(route.request().url());
@@ -116,7 +117,7 @@ describe('desktop retained check evidence', () => {
           .getByRole('heading', { name: 'Check finished with gaps', exact: true })
           .waitFor();
         await dialog.getByText('Loading repository evidence…', { exact: true }).waitFor();
-        expect(await dialog.getByText('Priority', { exact: true }).isVisible()).toBe(false);
+        expect(await dialog.getByText('State', { exact: true }).isVisible()).toBe(false);
         await capture('loading');
         release?.();
         gate = undefined;
@@ -141,7 +142,7 @@ describe('desktop retained check evidence', () => {
         ).toBe(true);
         await capture('reused');
         // Same check reopening retains the visited boundary and does not switch to current status.
-        await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Close check', exact: true }).click();
         await page.waitForURL(/\/sync$/u);
         await page.goBack();
         await page.waitForURL(url);
@@ -151,8 +152,8 @@ describe('desktop retained check evidence', () => {
         );
         const summary = dialog.locator('summary').filter({ hasText: 'Execution details' });
         await summary.click();
-        await dialog.getByText('Priority', { exact: true }).waitFor();
-        await dialog.getByText('Priority', { exact: true }).scrollIntoViewIfNeeded();
+        await dialog.getByText('State', { exact: true }).waitFor();
+        await dialog.getByText('State', { exact: true }).scrollIntoViewIfNeeded();
         await capture('execution');
         await pagination.getByRole('combobox', { name: 'Repository evidence per page' }).click();
         await page.getByRole('option', { name: '20', exact: true }).click();

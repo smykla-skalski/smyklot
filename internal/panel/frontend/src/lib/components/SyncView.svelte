@@ -50,9 +50,9 @@
   import type { SyncSection } from '#lib/routes.js';
 
   import SyncHistory from './SyncHistory.svelte';
-  import QueueInspector from './QueueInspector.svelte';
+  import SyncCheckInspector from './SyncCheckInspector.svelte';
   import Link from './Link.svelte';
-  import type { QueueDetail } from '../types';
+  import type { SyncCheckResponse } from '../types';
   import type { Page, SyncPlanSummary } from '../types';
   import FormError from './FormError.svelte';
   import ResultProblem from './ResultProblem.svelte';
@@ -115,7 +115,7 @@
     checkEvidenceApi?: Pick<import('../api').PanelApi, 'fetchSyncCheckObservations'>;
     selectedCheckId?: string | null;
     checkHref: (id: string) => string;
-    fetchCheck: (id: string) => Promise<QueueDetail>;
+    fetchCheck: (id: string) => Promise<SyncCheckResponse>;
     permissionsHref?: string | null;
     queueHref?: string | null;
     repositoryHref?: ((repository: string) => string) | null;
@@ -904,13 +904,15 @@ Live plan and status queries share the shell's event invalidation and polling fa
   </section>
 {/if}
 
-<QueueInspector
+<SyncCheckInspector
+  {checkHref}
+  {actorId}
   {checkEvidenceApi}
   itemId={section === 'overview' ? selectedCheckId : null}
   syncResultHref={(id) =>
     selectedCheckId === null ? historyResultHref(id) : checkResultHref(selectedCheckId, id)}
   {targetId}
-  fetchItem={fetchCheck}
+  {fetchCheck}
   onClose={() => onOpenSection('overview')}
 />
 
