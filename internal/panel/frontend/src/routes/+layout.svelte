@@ -1474,6 +1474,16 @@
         {#each runtimeConflictReview.conflicts as field (field.id)}
           <div class="form-field">
             <label class="form-label" for={`conflict-${field.id}`}>{field.label}</label>
+            <dl class="runtime-conflict-values">
+              <div>
+                <dt>My draft</dt>
+                <dd>{runtimeConflictValue(field.id, field.draft)}</dd>
+              </div>
+              <div>
+                <dt>Saved in another session</dt>
+                <dd>{runtimeConflictValue(field.id, field.saved)}</dd>
+              </div>
+            </dl>
             <Select
               id={`conflict-${field.id}`}
               value={runtimeConflictReview.choices[field.id]}
@@ -1481,11 +1491,11 @@
               options={[
                 {
                   value: 'draft',
-                  label: `My draft: ${runtimeConflictValue(field.id, field.draft)}`,
+                  label: 'My draft',
                 },
                 {
                   value: 'saved',
-                  label: `Saved in another session: ${runtimeConflictValue(field.id, field.saved)}`,
+                  label: 'Saved in another session',
                 },
               ]}
               onValueChange={(value) => {
@@ -1502,6 +1512,21 @@
 </QueryClientProvider>
 
 <style>
+  .runtime-conflict-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+  }
+  .runtime-conflict-values dt {
+    font-weight: 600;
+  }
+  .runtime-conflict-values dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
   .shell-notification-layer {
     inset-block-start: var(--space-4);
     inset-inline-end: var(--space-4);

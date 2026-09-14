@@ -1647,7 +1647,7 @@ describe('desktop runtime conflict review', () => {
       await shot('choices');
       await page
         .getByRole('option', {
-          name: choice === 'draft' ? 'My draft: /mine' : 'Saved in another session: /theirs',
+          name: choice === 'draft' ? 'My draft' : 'Saved in another session',
           exact: true,
         })
         .click();
@@ -1669,4 +1669,101 @@ describe('desktop runtime conflict review', () => {
       await page.close();
     }
   });
+  it.each(['light', 'dark'] as const)(
+    'resolves multiple conflicts with long values in %s',
+    async (colorScheme) => {
+      const mine = '/mine-' + 'long-command-prefix-'.repeat(14);
+      const theirs = '/theirs-' + 'long-command-prefix-'.repeat(14);
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(10_000);
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const read = async (): Promise<RootRuntimeSettings> =>
+        (await page.request.get(endpoint)).json();
+      const input = (revision: number): RootRuntimeSettingsInput => ({
+        bot_config: null,
+        log_level: null,
+        background_work_paused: false,
+        reaction_poll_interval_seconds: null,
+        merge_after_ci_quiet_period_seconds: null,
+        path_index_interval_seconds: null,
+        session_ttl_seconds: null,
+        expected_revision: revision,
+      });
+      const shot = async (scene: string) => {
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({
+          path: join(directory, `F04-multi-conflict-${scene}-${colorScheme}.png`),
+        });
+      };
+      try {
+        expect(
+          (await page.request.put(endpoint, { data: input((await read()).revision) })).ok(),
+        ).toBe(true);
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        const prefix = page.getByLabel('Prefix', { exact: true });
+        await prefix.fill(mine);
+        await page.getByLabel('Indent Width', { exact: true }).fill('4');
+        await page.getByLabel('Line Width', { exact: true }).fill('120');
+        const remote = input((await read()).revision);
+        remote.bot_config = {
+          version: 1,
+          overrides: { command_prefix: theirs, formatting: { common: { indent_width: 6 } } },
+        };
+        expect((await page.request.put(endpoint, { data: remote })).ok()).toBe(true);
+        await page.getByRole('button', { name: 'Update draft', exact: true }).click();
+        const dialog = page.getByRole('dialog', {
+          name: 'Choose which values to keep',
+          exact: true,
+        });
+        await dialog.waitFor();
+        expect(
+          await dialog.getByRole('button', { name: 'Update draft', exact: true }).isDisabled(),
+        ).toBe(true);
+        await shot('unanswered');
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+        expect(await prefix.inputValue()).toBe(mine);
+        await page.getByRole('button', { name: 'Update draft', exact: true }).click();
+        await dialog.waitFor();
+        await dialog.getByRole('combobox', { name: 'Command prefix', exact: true }).click();
+        await shot('choices');
+        await page
+          .getByRole('option', {
+            name: 'My draft',
+            exact: true,
+          })
+          .click();
+        expect(
+          await dialog.getByRole('button', { name: 'Update draft', exact: true }).isDisabled(),
+        ).toBe(true);
+        await shot('partial');
+        await dialog
+          .getByRole('combobox', { name: 'Formatting: common indent width', exact: true })
+          .click();
+        await page.getByRole('option', { name: 'Saved in another session', exact: true }).click();
+        await shot('selected');
+        await dialog.getByRole('button', { name: 'Update draft', exact: true }).click();
+        await dialog.waitFor({ state: 'hidden' });
+        expect((await read()).behavior_defaults.intent?.overrides.command_prefix).toBe(theirs);
+        const response = page.waitForResponse(
+          (response) => response.url() === endpoint && response.request().method() === 'PUT',
+        );
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        expect((await response).status()).toBe(200);
+        const saved = await read();
+        expect(saved.behavior_defaults.intent?.overrides.command_prefix).toBe(mine);
+        expect(saved.behavior_defaults.intent?.overrides.formatting?.common?.indent_width).toBe(6);
+        expect(saved.behavior_defaults.intent?.overrides.formatting?.common?.line_width).toBe(120);
+      } finally {
+        await page.close();
+      }
+    },
+  );
 });
