@@ -397,14 +397,20 @@ answered a question a workspace never asks and hid the one it does.
       />
     </label>
 
-    <label class="form-field request-reason">
-      <span class="form-label">Reason</span>
+    <div class="form-field request-reason">
+      <label class="form-label" for="schedule-request-reason">Reason</label>
       <textarea
         class="text-input"
         rows="3"
+        id="schedule-request-reason"
+        required
+        aria-describedby="schedule-request-reason-help"
         bind:value={reason}
         placeholder="What this timing is getting in the way of"></textarea>
-    </label>
+      <p id="schedule-request-reason-help" class="form-help">
+        Required. Explain what the current timing prevents and how this change would help.
+      </p>
+    </div>
     <FormError message={problem} />
   </div>
 

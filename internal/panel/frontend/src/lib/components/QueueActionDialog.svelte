@@ -224,12 +224,17 @@ to ask it four different ways.
       <div class="form-field">
         <label class="form-label" for="queue-action-reason">Reason</label>
         <textarea
+          required
+          aria-describedby="queue-action-reason-help"
           id="queue-action-reason"
           class="text-input"
           disabled={busy}
           rows="3"
           bind:value={reason}
           placeholder="Why is this exception needed?"></textarea>
+        <p id="queue-action-reason-help" class="form-help">
+          Required. Explain why this occurrence should bypass its usual timing.
+        </p>
       </div>
     {/if}
     {#if error !== ''}
