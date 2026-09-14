@@ -582,3 +582,13 @@ run = "npm run storybook"
 description = "Build the panel catalogue as a static site"
 depends = ["panel:frontend:install"]
 run = "./scripts/build-panel-storybook.sh"
+
+[tasks."test:storage:check-results-migration"]
+description = "Verify retained-check upgrades against existing SQLite and PostgreSQL data"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = """
+set -eu
+: "${SMYKLOT_TEST_POSTGRES_DSN:?Run mise run db:dev and set its DSN first}"
+go test -race -count=1 -v -run '^TestSyncCheckResultsPreserveLegacyEvidenceAfterPruning$' ./internal/storage/sqlite ./internal/storage/postgres
+"""

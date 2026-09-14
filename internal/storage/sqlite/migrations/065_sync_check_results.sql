@@ -8,7 +8,16 @@ CREATE TABLE sync_check_results (
 CREATE INDEX sync_check_results_target_idx ON sync_check_results (target_id, check_id);
 INSERT INTO sync_check_results (check_id, target_id, details)
 SELECT id, target_id, details FROM queue_items
-WHERE kind = 'sync_scan' AND target_id IS NOT NULL AND (json_type(details, '$.outcome') = 'object' OR json_extract(details, '$.result_plan_id') <> '');
+-- Legacy details are text and can be empty or malformed. CASE guards the
+-- parser even when the planner reorders predicates. Preserve observed checks
+-- independently of their metadata so reparenting never loses evidence.
+WHERE kind = 'sync_scan' AND target_id IS NOT NULL AND (
+    EXISTS (SELECT 1 FROM sync_check_observations WHERE queue_id = queue_items.id)
+    OR CASE WHEN json_valid(details)
+        THEN (json_type(details, '$.outcome') = 'object' OR json_extract(details, '$.result_plan_id') <> '')
+        ELSE FALSE
+    END
+);
 
 CREATE TABLE sync_check_observations_retained (
     queue_id TEXT NOT NULL REFERENCES sync_check_results(check_id) ON DELETE CASCADE,
