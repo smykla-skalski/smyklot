@@ -317,11 +317,7 @@
   let approving = $state(false);
   let discarding = $state(false);
   let runningNow = $state(false);
-  let runNotice = $state(
-    untrack(() =>
-      acceptedRequest ? 'Your request was accepted. Open it to see what happened.' : '',
-    ),
-  );
+  let runNotice = $state('');
   let requestedCheckId = $state<string | null>(null);
   let requestedDispatchId = $state<string | null>(null);
   let pendingRequest = $state.raw<SyncRunNowInput | null>(null);
@@ -329,8 +325,11 @@
   let requestUncertain = $state(false);
   let requestCleanupPending = $state(false);
   let requestNotRecorded = $state(false);
-  let confirmedRequest = $state<import('../session.svelte').AcceptedSyncRequest | null>(
-    untrack(() => acceptedRequest),
+  let localAcceptance = $state<import('../session.svelte').AcceptedSyncRequest | null>(null);
+  const confirmedRequest = $derived(acceptedRequest ?? localAcceptance);
+  const requestNotice = $derived(
+    runNotice ||
+      (confirmedRequest ? 'Your request was accepted. Open it to see what happened.' : ''),
   );
   let focusConfirmedRequest = false;
   let requestStore: SyncRequestIntentStore | null = null;
@@ -351,6 +350,26 @@
     }
   }
   onMount(readRequestStorage);
+
+  // A response can arrive in the session after routing has replaced this view.
+  // Reconcile only the exact saved intent, never an unrelated earlier acceptance.
+  $effect(() => {
+    const accepted = acceptedRequest;
+    if (!accepted) return;
+    untrack(() => {
+      if (
+        runningNow ||
+        pendingRequest?.request_key !== accepted.key ||
+        pendingRequest.action !== accepted.action
+      )
+        return;
+      requestCleanupPending = true;
+      requestUncertain = false;
+      requestNotRecorded = false;
+      error = null;
+      finishRequestRecovery();
+    });
+  });
 
   let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
@@ -608,8 +627,8 @@
           'The saved request could not be matched to this response. Keep it and try confirming again.',
         );
       focusConfirmedRequest = trigger.ownerDocument.activeElement === trigger;
-      confirmedRequest = { action: request.action, key: request.request_key };
-      onAcceptedRequest?.(requestActorId, requestTargetId, confirmedRequest);
+      localAcceptance = { action: request.action, key: request.request_key };
+      onAcceptedRequest?.(requestActorId, requestTargetId, localAcceptance);
       requestCleanupPending = true;
       requestUncertain = false;
       finishRequestRecovery();
@@ -635,7 +654,7 @@
     const requestTargetId = targetId;
     const requestActorId = actorId;
     const recovering = requestUncertain;
-    confirmedRequest = null;
+    localAcceptance = null;
     onAcceptedRequest?.(requestActorId, requestTargetId, null);
     requestNotRecorded = false;
     runningNow = true;
@@ -675,8 +694,8 @@
       requestUncertain = false;
       finishRequestRecovery();
       if (response.status === 'check_accepted' || response.status === 'dispatch_accepted') {
-        confirmedRequest = { action: request.action, key: request.request_key };
-        onAcceptedRequest?.(requestActorId, requestTargetId, confirmedRequest);
+        localAcceptance = { action: request.action, key: request.request_key };
+        onAcceptedRequest?.(requestActorId, requestTargetId, localAcceptance);
         runNotice = 'Your request was accepted. Open it to see what happened.';
         if (!requestHref) {
           if (response.status === 'check_accepted') requestedCheckId = response.check_id!;
@@ -756,7 +775,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
 -->
 
 {#snippet requestFeedback()}
-  {#if requestStorageProblem || (pendingRequest && requestUncertain) || error !== null || feedbackReadError || runNotice !== ''}
+  {#if requestStorageProblem || (pendingRequest && requestUncertain) || error !== null || feedbackReadError || requestNotice !== ''}
     <div class="sync-feedback">
       {#if requestStorageProblem}
         <FormError message={requestStorageProblem} />
@@ -811,8 +830,8 @@ Live plan and status queries share the shell's event invalidation and polling fa
         <FormError message={error} />
       {/if}
       {#if feedbackReadError}<FormError message={messageOf(feedbackReadError)} />{/if}
-      {#if runNotice !== ''}<div class="sync-run-notice" role="status">
-          <p>{runNotice}</p>
+      {#if requestNotice !== ''}<div class="sync-run-notice" role="status">
+          <p>{requestNotice}</p>
           {#if confirmedRequest && requestHref}<Link
               href={requestHref(confirmedRequest.action, confirmedRequest.key)}
               {@attach (element) => {
