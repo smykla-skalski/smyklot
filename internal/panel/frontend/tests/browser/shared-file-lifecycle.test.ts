@@ -103,6 +103,8 @@ describe('desktop editor gutter contrast', () => {
           'output-selected',
           'output-invalid',
           'repository-adjustment',
+          'parsed-settings',
+          'configuration-review',
         ]) {
           if (state === 'focused') await content.click();
           if (state === 'selected') await content.press('ControlOrMeta+a');
@@ -133,6 +135,49 @@ describe('desktop editor gutter contrast', () => {
             await adjustment.locator('.cm-content').waitFor();
             await adjustment.scrollIntoViewIfNeeded();
           }
+          const configuration = page.getByRole('dialog', {
+            name: 'Configuration file',
+            exact: true,
+          });
+          const review = page.getByRole('dialog', {
+            name: 'Review configuration file',
+            exact: true,
+          });
+          if (state === 'parsed-settings') {
+            await visit(page, addressOf(panel, 'workspace/repositories/api-gateway'));
+            await page.getByRole('button', { name: 'Inspect file', exact: true }).click();
+            await configuration
+              .getByRole('region', { name: 'Parsed file settings', exact: true })
+              .waitFor();
+            await configuration.locator('.cm-content').waitFor();
+          }
+          if (state === 'configuration-review') {
+            await configuration.getByRole('button', { name: 'Done', exact: true }).click();
+            await visit(page, addressOf(panel, 'workspace/repositories/edge-proxy'));
+            await page
+              .getByRole('region', { name: 'Configuration file sync', exact: true })
+              .getByRole('button', { name: /^Review (conflicts|file)$/ })
+              .click();
+            await review
+              .getByRole('radio', { name: 'Panel values', exact: true })
+              .locator('..')
+              .click();
+            const full = review.getByRole('radio', { name: 'Full result', exact: true });
+            if (await full.count()) await full.locator('..').click();
+            await review.locator('.cm-content').waitFor();
+          }
+          if (state === 'parsed-settings' || state === 'configuration-review') {
+            const inspector = state === 'parsed-settings' ? configuration : review;
+            await inspector.evaluate(async (node) => {
+              await Promise.all(
+                node.getAnimations({ subtree: true }).map((animation) => animation.finished),
+              );
+            });
+            expect(await inspector.locator('.cm-content').getAttribute('contenteditable')).toBe(
+              'false',
+            );
+            await inspector.locator('.cm-content').scrollIntoViewIfNeeded();
+          }
           if (state.startsWith('output')) {
             await output.evaluate(async (node) => {
               await Promise.all(
@@ -140,7 +185,13 @@ describe('desktop editor gutter contrast', () => {
               );
             });
           }
-          const surface = state.startsWith('output') ? output : page;
+          const surface = state.startsWith('output')
+            ? output
+            : state === 'parsed-settings'
+              ? configuration
+              : state === 'configuration-review'
+                ? review
+                : page;
           const ratios = await surface
             .locator(
               state.includes('selected')
