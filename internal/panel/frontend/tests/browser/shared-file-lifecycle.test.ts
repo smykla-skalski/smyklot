@@ -102,6 +102,7 @@ describe('desktop editor gutter contrast', () => {
           'output',
           'output-selected',
           'output-invalid',
+          'repository-adjustment',
         ]) {
           if (state === 'focused') await content.click();
           if (state === 'selected') await content.press('ControlOrMeta+a');
@@ -121,6 +122,17 @@ describe('desktop editor gutter contrast', () => {
             await output.locator('.cm-content').fill('{');
             await output.locator('.editor-problem').waitFor();
           }
+          if (state === 'repository-adjustment') {
+            await output.getByRole('button', { name: 'Undo', exact: true }).click();
+            await output.getByRole('link', { name: 'Edit adjustments', exact: true }).click();
+            const adjustment = page.getByRole('article', {
+              name: 'Adjustment for renovate.json',
+              exact: true,
+            });
+            await adjustment.waitFor();
+            await adjustment.locator('.cm-content').waitFor();
+            await adjustment.scrollIntoViewIfNeeded();
+          }
           if (state.startsWith('output')) {
             await output.evaluate(async (node) => {
               await Promise.all(
@@ -130,7 +142,11 @@ describe('desktop editor gutter contrast', () => {
           }
           const surface = state.startsWith('output') ? output : page;
           const ratios = await surface
-            .locator('.cm-lineNumbers .cm-gutterElement')
+            .locator(
+              state.includes('selected')
+                ? '.cm-lineNumbers .cm-gutterElement'
+                : '.cm-lineNumbers .cm-gutterElement, .cm-line, .cm-line > span, .editor-problem .form-error',
+            )
             .evaluateAll((nodes) => {
               const canvas = document.createElement('canvas');
               canvas.width = canvas.height = 1;
