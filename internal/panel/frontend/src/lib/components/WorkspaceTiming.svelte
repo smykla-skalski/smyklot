@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { PanelApi } from '#lib/api.js';
@@ -148,24 +149,6 @@
     chosenProfile = null;
   }
 
-  function minute(value: string): number {
-    const [hour = '0', rest = '0'] = value.split(':');
-    return Number(hour) * 60 + Number(rest);
-  }
-
-  function parseExceptions(): ScheduleProfile['exceptions'] {
-    return exceptions
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [date = '', span = 'closed'] = line.split(/\s+/u, 2);
-        if (span === 'closed') return { date, closed: true };
-        const [from = '00:00', to = '00:00'] = span.split('-', 2);
-        return { date, closed: false, start_minute: minute(from), end_minute: minute(to) };
-      });
-  }
-
   async function send(): Promise<void> {
     const current = chosen;
     if (current === undefined || reason.trim() === '' || cadenceInvalid) return;
@@ -180,10 +163,10 @@
         revision: 0,
         windows: windows.map((window) => ({
           weekday: window.weekday,
-          start_minute: minute(window.start),
-          end_minute: minute(window.end),
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
         })),
-        exceptions: parseExceptions(),
+        exceptions: windowMode === 'custom' ? parseScheduleExceptions(exceptions) : [],
       };
       await api.createTargetScheduleRequest(targetId, {
         kind,

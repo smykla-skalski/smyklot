@@ -65,6 +65,41 @@ describe('desktop hours draft protection', () => {
   });
 
   it.each(['light', 'dark'] as const)(
+    'retains invalid exception text for correction in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page.getByRole('button', { name: 'New hours profile' }).click();
+        const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        await editor.getByLabel('Profile name', { exact: true }).fill('Strict exception input');
+        const field = editor.getByLabel('Date exceptions', { exact: true });
+        const invalid = '2026-12-25 closed extra';
+        await field.fill(invalid);
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.getByRole('alert').filter({ hasText: 'Date exceptions, line 1:' }).waitFor();
+        expect(await field.inputValue()).toBe(invalid);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-parser-error-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await field.fill('2026-12-25 closed');
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.waitFor({ state: 'hidden' });
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'preserves an exception-only profile in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

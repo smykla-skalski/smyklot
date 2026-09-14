@@ -39,7 +39,14 @@ export function scheduleHoursProblems(profile: Hours): ScheduleProblem[] {
       });
     }
   }
-  for (const [index, exception] of profile.exceptions.entries()) {
+  return [...problems, ...scheduleExceptionProblems(profile.exceptions)];
+}
+
+export function scheduleExceptionProblems(
+  exceptions: ScheduleProfile['exceptions'],
+): ScheduleProblem[] {
+  const problems: ScheduleProblem[] = [];
+  for (const [index, exception] of exceptions.entries()) {
     if (!validScheduleDate(exception.date)) {
       problems.push({ field: 'exceptions', index, message: 'Choose a valid calendar date' });
     }
@@ -51,7 +58,7 @@ export function scheduleHoursProblems(profile: Hours): ScheduleProblem[] {
       });
     }
     if (
-      profile.exceptions.some(
+      exceptions.some(
         (other, at) =>
           at !== index &&
           other.date === exception.date &&

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
   import { onMount } from 'svelte';
   import type { ScheduleProfile, ScheduleProfileInput } from '#lib/types.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -22,6 +23,7 @@
     onSubmit: (input: ScheduleProfileInput) => void;
   } = $props();
 
+  let inputProblem = $state('');
   let name = $state('');
   let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   let windows = $state.raw<EditableWindow[]>([
@@ -97,17 +99,12 @@
     return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   }
 
-  function timeMinute(value: string): number {
-    const [hour = '0', minute = '0'] = value.split(':');
-    return Number(hour) * 60 + Number(minute);
-  }
-
   function windowsValid(): boolean {
     const byDay: Array<Array<{ start: number; end: number }>> = Array.from({ length: 7 }, () => []);
     for (const window of windows) {
-      const start = timeMinute(window.start);
-      const end = timeMinute(window.end);
-      if (start >= end) return false;
+      const start = scheduleMinute(window.start);
+      const end = scheduleMinute(window.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return false;
       byDay[window.weekday]?.push({ start, end });
     }
     for (const day of byDay) {
@@ -119,29 +116,24 @@
     return windows.length > 0 || exceptions.trim() !== '';
   }
 
-  function parseExceptions(): ScheduleProfileInput['exceptions'] {
-    return exceptions
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [date = '', span = 'closed'] = line.split(/\s+/, 2);
-        if (span === 'closed') return { date, closed: true };
-        const [from = '00:00', to = '00:00'] = span.split('-', 2);
-        return { date, closed: false, start_minute: timeMinute(from), end_minute: timeMinute(to) };
-      });
-  }
-
   function submit(): void {
+    inputProblem = '';
+    let parsedExceptions: ScheduleProfileInput['exceptions'];
+    try {
+      parsedExceptions = parseScheduleExceptions(exceptions);
+    } catch (cause) {
+      inputProblem = cause instanceof Error ? cause.message : String(cause);
+      return;
+    }
     onSubmit({
       name: name.trim(),
       timezone: timezone.trim(),
       windows: windows.map((window) => ({
         weekday: window.weekday,
-        start_minute: timeMinute(window.start),
-        end_minute: timeMinute(window.end),
+        start_minute: scheduleMinute(window.start),
+        end_minute: scheduleMinute(window.end),
       })),
-      exceptions: parseExceptions(),
+      exceptions: parsedExceptions,
       expected_revision: profile?.revision ?? 0,
     });
   }
@@ -221,7 +213,7 @@ changing a window here changes when every policy that names it runs.
         <code>YYYY-MM-DD closed</code> or <code>YYYY-MM-DD HH:MM-HH:MM</code>
       </p>
     </div>
-    <FormError message={error} />
+    <FormError message={inputProblem || error} />
   </div>
   <ConfirmDialog
     id="discard-hours-changes"
