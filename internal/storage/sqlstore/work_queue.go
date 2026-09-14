@@ -477,6 +477,12 @@ func (s *Store) decorateQueuePositions(
 		if items[index].State.Terminal() {
 			continue
 		}
+		if items[index].State == workqueue.StateBlocked {
+			items[index].EstimatedStartAt = nil
+			items[index].WorkAhead = 0
+
+			continue
+		}
 		if position, ok := positions[items[index].ID]; ok {
 			items[index].WorkAhead = position.ahead
 			items[index].EstimatedStartAt = &position.estimated

@@ -23,6 +23,7 @@ func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareQueuePolicySpecs(runtime)
 	declareQueueListingSpecs(runtime)
 	declareQueueNameRetentionSpecs(runtime)
+	declareBlockedQueueTimingSpecs(runtime)
 	declareQueueScheduleSpecs(runtime)
 	declareQueueLeaseSpecs(runtime)
 	declareRecurringCompletionSpecs(runtime)

@@ -14,5 +14,10 @@ export function mockQueueActions(item: QueueItem): QueueActionType[] {
 }
 
 export function projectMockQueueItem(item: QueueItem): QueueItem {
-  return { ...item, actions: mockQueueActions(item) };
+  const projected = { ...item, actions: mockQueueActions(item) };
+  if (item.state === 'blocked') {
+    delete projected.estimated_start_at;
+    projected.work_ahead = 0;
+  }
+  return projected;
 }
