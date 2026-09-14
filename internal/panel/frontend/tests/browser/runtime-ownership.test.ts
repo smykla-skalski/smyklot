@@ -14,6 +14,119 @@ afterAll(async () => {
 
 describe('desktop runtime override ownership', () => {
   it.each(['light', 'dark'] as const)(
+    'recovers rejected session duration with keyboard focus in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const read = async () => (await page.request.get(endpoint)).json();
+      const capture = async (scene: string) => {
+        if (scene === 'rejected') return;
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({
+          path: join(directory, `F04-duration-server-${scene}-${colorScheme}.png`),
+        });
+      };
+      try {
+        const initial = await read();
+        const input = {
+          bot_config: null,
+          log_level: null,
+          reaction_poll_interval_seconds: null,
+          merge_after_ci_quiet_period_seconds: null,
+          path_index_interval_seconds: null,
+          session_ttl_seconds: null,
+          expected_revision: initial.revision,
+        };
+        expect((await page.request.put(endpoint, { data: input })).status()).toBe(200);
+        const baseline = await read();
+        let reject = true;
+        await page.route(endpoint, async (route) => {
+          if (route.request().method() !== 'PUT' || !reject) return route.continue();
+          await route.fulfill({
+            status: 400,
+            json: {
+              error: {
+                code: 'invalid_runtime_settings',
+                field: 'session_ttl_seconds',
+                message: 'Runtime settings were rejected by the service',
+              },
+            },
+          });
+        });
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        await page
+          .getByRole('button', { name: 'Override the deployment session lifetime' })
+          .click();
+        const prefix = page.getByLabel('Session lifetime amount', { exact: true });
+        await prefix.fill('2');
+        await visit(page, addressOf(panel, 'root/history/audit'));
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        await page.getByText('Fix the invalid setting before saving', { exact: true }).waitFor();
+        await page
+          .getByText('Runtime settings were rejected by the service', { exact: true })
+          .waitFor();
+        const rejected = await read();
+        expect(rejected).toEqual({
+          ...baseline,
+          service: { ...baseline.service, uptime_seconds: rejected.service.uptime_seconds },
+        });
+        await capture('rejected');
+        await page.getByRole('link', { name: 'Open Service settings', exact: true }).click();
+        await prefix.waitFor();
+        await expect
+          .poll(() => prefix.evaluate((node) => node === document.activeElement))
+          .toBe(true);
+        expect(await prefix.inputValue()).toBe('2');
+        expect(await prefix.getAttribute('aria-invalid')).toBe('true');
+        const description = await prefix.getAttribute('aria-describedby');
+        expect(description).toBeTruthy();
+        expect(await page.locator(`[id="${description}"]`).textContent()).toBe(
+          'Runtime settings were rejected by the service',
+        );
+        await capture('returned');
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await prefix.waitFor();
+        expect(await prefix.inputValue()).toBe('2');
+        await page.getByText('Fix the invalid setting before saving', { exact: true }).waitFor();
+        expect(await page.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(
+          true,
+        );
+        await capture('restored');
+        await prefix.fill('3');
+        await expect.poll(() => prefix.getAttribute('aria-invalid')).toBe('false');
+        expect(await prefix.getAttribute('aria-describedby')).toBeNull();
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isEnabled())
+          .toBe(true);
+        reject = false;
+        const response = page.waitForResponse(
+          (r) => r.url() === endpoint && r.request().method() === 'PUT',
+        );
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        expect((await response).status()).toBe(200);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await prefix.waitFor();
+        expect(await prefix.inputValue()).toBe('3');
+        expect((await read()).session_lifetime.override_seconds).toBe(259200);
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
+          .toBe(0);
+        await capture('saved');
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'recovers persisted server field errors with keyboard focus in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

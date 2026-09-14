@@ -355,6 +355,7 @@ without the composer.
       : (runtimeDurationSeconds(held, spec, durationMaximum(spec)) ?? held.override_seconds)}
     inherited={durationFallback(spec.key)}
     editor={held?.editor ?? null}
+    serverProblem={drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.${spec.key}`)}
     units={spec.units}
     minimum={spec.allowZero ? 0 : spec.minimumSeconds}
     maximum={durationMaximum(spec)}

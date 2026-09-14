@@ -23,6 +23,7 @@
     allowEmpty = false,
     disabled = false,
     editor = null,
+    serverProblem = null,
     onChange = () => {},
     onEdit,
     onValidityChange = () => {},
@@ -39,6 +40,8 @@
     disabled?: boolean;
     /** A persisted invalid draft, where the caller's document supports one */
     editor?: DurationEditorValue | null;
+    /** Owned by the submitted value, cleared by the caller after correction. */
+    serverProblem?: string | null;
     onChange?: (seconds: number | null) => void;
     onEdit?: (editor: DurationEditorValue) => void;
     onValidityChange?: (problem: string | null) => void;
@@ -66,6 +69,7 @@
   );
   const options = $derived(units.map((value) => ({ value, label: value })));
   const problem = $derived(validate(amount, unit));
+  const shownProblem = $derived(problem ?? serverProblem);
 
   // Parent saves, discard and restored drafts are external changes. A successful
   // keystroke comes back through value too, and must not replace the text mid-edit.
@@ -165,8 +169,8 @@ the owning draft. A caller with persisted raw drafts can pass editor and onEdit.
       inputmode="decimal"
       maxlength="32"
       aria-label={amountLabel}
-      aria-invalid={problem !== null}
-      aria-describedby={problem !== null ? `${fieldId}-problem` : undefined}
+      aria-invalid={shownProblem !== null}
+      aria-describedby={shownProblem !== null ? `${fieldId}-problem` : undefined}
       {placeholder}
       value={amount}
       {disabled}
@@ -181,8 +185,8 @@ the owning draft. A caller with persisted raw drafts can pass editor and onEdit.
       onValueChange={(value) => pickUnit(value as DurationUnit)}
     />
   </span>
-  {#if problem !== null}
-    <span class="duration-problem" id={`${fieldId}-problem`}>{problem}</span>
+  {#if shownProblem !== null}
+    <span class="duration-problem" id={`${fieldId}-problem`}>{shownProblem}</span>
   {/if}
 </span>
 
