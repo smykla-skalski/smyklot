@@ -303,8 +303,10 @@
   let pendingRequest = $state.raw<SyncRunNowInput | null>(null);
   let requestStorageProblem = $state<string | null>(null);
   let requestUncertain = $state(false);
+  let requestCleanupPending = $state(false);
   let requestStore: SyncRequestIntentStore | null = null;
-  onMount(() => {
+  function readRequestStorage(): void {
+    if (runningNow || pendingRequest) return;
     if (!actorId) {
       requestStorageProblem = 'Your account must be loaded before requesting sync.';
       return;
@@ -313,11 +315,13 @@
       requestStore = new SyncRequestIntentStore(window.sessionStorage, actorId, targetId);
       pendingRequest = requestStore.read();
       requestUncertain = pendingRequest !== null;
+      requestStorageProblem = null;
     } catch {
       requestStorageProblem =
-        'The previous sync request could not be read from browser storage. New requests are paused to avoid repeating work.';
+        'Browser storage could not be read. Retry access to recover any saved request. New requests remain paused.';
     }
-  });
+  }
+  onMount(readRequestStorage);
 
   let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
@@ -562,10 +566,19 @@
     requestedCheckId = null;
     requestedDispatchId = null;
     try {
-      if (!requestStore || (requestStorageProblem && !pendingRequest))
-        throw new Error('Browser storage is unavailable. The request has not been sent.');
-      const request = requestStore.begin(input);
-      pendingRequest = request;
+      if (!pendingRequest) {
+        try {
+          if (!requestStore || requestStorageProblem) throw new Error('Storage unavailable');
+          pendingRequest = requestStore.begin(input);
+        } catch {
+          requestStorageProblem =
+            'The request could not be saved in browser storage and has not been sent. Retry browser storage before starting again.';
+          return;
+        }
+      }
+      // The exact pending command is already known. Storage failure must not prevent
+      // its idempotent recovery or replace its identity with a new request.
+      const request = pendingRequest;
       const response = await runSyncNow(requestTargetId, request);
       const valid =
         request.action === 'check'
@@ -580,16 +593,9 @@
         throw new Error(
           'The sync response could not be confirmed. Recover the request before starting another.',
         );
-      try {
-        requestStore.clear(request.request_key);
-        pendingRequest = null;
-        requestUncertain = false;
-        requestStorageProblem = null;
-      } catch {
-        requestUncertain = true;
-        requestStorageProblem =
-          'The response was received, but its saved request could not be cleared. New requests are paused.';
-      }
+      requestCleanupPending = true;
+      requestUncertain = false;
+      finishRequestRecovery();
       if (response.status === 'check_accepted') {
         requestedCheckId = response.check_id!;
         runNotice = 'Your check request was accepted. Open the check to see its current result.';
@@ -637,6 +643,21 @@
     }
   }
 
+  function finishRequestRecovery(): void {
+    if (!pendingRequest || !requestCleanupPending) return;
+    try {
+      if (!requestStore) throw new Error('Storage unavailable');
+      requestStore.clear(pendingRequest.request_key);
+      pendingRequest = null;
+      requestCleanupPending = false;
+      requestUncertain = false;
+      requestStorageProblem = null;
+    } catch {
+      requestStorageProblem =
+        'The response was received, but its saved request could not be cleared. New requests are paused.';
+    }
+  }
+
   function messageOf(cause: unknown): string {
     return cause instanceof Error ? cause.message : String(cause);
   }
@@ -661,22 +682,33 @@ Live plan and status queries share the shell's event invalidation and polling fa
 {#snippet requestFeedback()}
   {#if requestStorageProblem || (pendingRequest && requestUncertain) || error !== null || feedbackReadError || runNotice !== ''}
     <div class="sync-feedback">
-      {#if requestStorageProblem}<FormError message={requestStorageProblem} />{/if}
-      {#if pendingRequest && requestUncertain}
+      {#if requestStorageProblem}
+        <FormError message={requestStorageProblem} />
+        {#if !pendingRequest}<Button tone="quiet" onclick={readRequestStorage}
+            >Retry browser storage</Button
+          >{/if}
+      {/if}
+      {#if pendingRequest && (requestUncertain || requestCleanupPending)}
         <Callout role="status">
           <div class="callout-copy">
             <strong
-              >{pendingRequest.action === 'check'
-                ? 'Check request needs confirmation'
-                : 'Run request needs confirmation'}</strong
+              >{requestCleanupPending
+                ? 'Finish local request recovery'
+                : pendingRequest.action === 'check'
+                  ? 'Check request needs confirmation'
+                  : 'Run request needs confirmation'}</strong
             >
             <p>
-              The previous request may already have been accepted. Recover it before starting
-              another sync request.
+              {requestCleanupPending
+                ? 'The server response is confirmed. Finish recovery to clear the saved browser record. This does not send the request again.'
+                : 'The previous request may already have been accepted. Recover it before starting another sync request.'}
             </p>
           </div>
           {#snippet actions()}
-            {#if canControl}<Button
+            {#if requestCleanupPending}<Button onclick={finishRequestRecovery}
+                >Finish recovery</Button
+              >
+            {:else if canControl}<Button
                 disabled={runningNow}
                 onclick={() => pendingRequest && void onRunNow(pendingRequest)}
                 >{runningNow
