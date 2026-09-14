@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { syncActionProblem } from '../sync-action-problem';
   import { syncCheckIntent, syncCheckGuidance, syncCheckBlocker } from '../sync-check-guidance';
   import type { SyncCheckCapability } from '../types';
   import {
@@ -569,6 +570,7 @@ the button.
                   {@const opens = expandable(action)}
                   {@const showing = opens && expanded.has(keyOf(action))}
                   {@const shape = rowShape(action)}
+                  {@const problem = syncActionProblem(action)}
                   <!-- ONE ROW, whatever it can do. A row that opens a diff used to be
                    a second component - a 24px button beside a 40px div, holding
                    the same three spans - so a list of six rows kept two rhythms
@@ -671,11 +673,10 @@ the button.
                           >View pull request</Link
                         ></span
                       >{/if}
-                    {#if action.error !== undefined}
-                      <span class="action-fail">{action.error}</span>
-                    {:else if action.blocker !== undefined}
-                      <span class="action-fail">not tried: {action.blocker} failed first</span>
-                    {/if}
+                    {#if problem}<span
+                        class="action-fail"
+                        class:is-skipped={action.state === 'skipped'}>{problem}</span
+                      >{/if}
                   </div>
                 {/each}
               </div>
@@ -1315,6 +1316,10 @@ the button.
     grid-column: 3;
     line-height: var(--leading-micro);
     margin-block-start: calc(var(--space-1) - var(--space-3));
+  }
+
+  .action-fail.is-skipped {
+    color: var(--text-secondary);
   }
 
   /* ---------- The apply bar: material lives in ApplyBar.svelte ---------- */

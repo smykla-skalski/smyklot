@@ -24,6 +24,7 @@ describe('desktop dispatch capability guidance', () => {
         reducedMotion: 'reduce',
       });
       try {
+        let outcomeReasons: 'missing' | 'dependency' | 'disabled' = 'missing';
         let reads = 0;
         let posts = 0;
         let release: (() => void) | undefined;
@@ -57,6 +58,17 @@ describe('desktop dispatch capability guidance', () => {
                 (action: Record<string, unknown>, index: number) => ({
                   ...action,
                   state: ['applied', 'failed', 'skipped', 'applied'][index] ?? action.state,
+                  ...(index === 1 && outcomeReasons !== 'missing'
+                    ? { error: 'GitHub denied this label change.' }
+                    : {}),
+                  ...(index === 2 && outcomeReasons !== 'missing'
+                    ? {
+                        blocker:
+                          outcomeReasons === 'dependency'
+                            ? 'labels'
+                            : 'Sync is disabled for this category.',
+                      }
+                    : {}),
                 }),
               );
               body.plan.queue_item = {
@@ -143,12 +155,35 @@ describe('desktop dispatch capability guidance', () => {
           await inspector
             .getByText('2 succeeded · 1 failed · 1 skipped', { exact: true })
             .waitFor();
+          await inspector
+            .getByText('Failed: No failure details were recorded.', { exact: true })
+            .waitFor();
+          await inspector.getByText('Skipped: No reason was recorded.', { exact: true }).waitFor();
           const details = inspector.locator('details').filter({ hasText: 'Scheduling details' });
           expect(await details.getAttribute('open')).toBeNull();
-          const directory = process.env.SMYKLOT_SYNC_PROGRESS_SCREENSHOTS;
+          const directory = process.env.SMYKLOT_SYNC_ACTION_PROBLEM_SCREENSHOTS;
           if (directory) {
             await mkdir(directory, { recursive: true });
-            await page.screenshot({ path: join(directory, `F33-progress-mixed-${theme}.png`) });
+            await page.screenshot({ path: join(directory, `F33-action-problems-${theme}.png`) });
+          }
+          for (const mode of ['dependency', 'disabled'] as const) {
+            outcomeReasons = mode;
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await inspector
+              .getByText('Failed: GitHub denied this label change.', { exact: true })
+              .waitFor({ timeout: 5000 });
+            await inspector
+              .getByText(
+                mode === 'dependency'
+                  ? 'Skipped because labels failed earlier in this repository.'
+                  : 'Skipped: Sync is disabled for this category.',
+                { exact: true },
+              )
+              .waitFor({ timeout: 5000 });
+            if (directory)
+              await page.screenshot({
+                path: join(directory, `F33-action-problems-${mode}-${theme}.png`),
+              });
           }
           expect(posts).toBe(0);
         }
