@@ -57,7 +57,7 @@
   }
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <HistoryPanel
     checkEvidenceApi={session.api}
     recoveryApi={session.api}
@@ -80,4 +80,4 @@
     onRootSettingsRestored={runtimeSettingsRestored}
     repositoryHref={repositoryPage}
   />
-</section>
+</div>

@@ -5,11 +5,11 @@
   const session = getPanelSession();
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <GeneralQueueView
     api={session.api}
     canControl
     section={session.currentQueueSection}
     onSelectSection={(value) => session.selectRootQueueSection(value)}
   />
-</section>
+</div>

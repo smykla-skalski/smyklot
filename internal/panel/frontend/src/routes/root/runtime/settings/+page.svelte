@@ -5,10 +5,10 @@
   const session = getPanelSession();
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <RootSettings
     section="settings"
     fetchSettings={session.api.fetchRootRuntimeSettings}
     saveSettings={session.api.saveRootRuntimeSettings}
   />
-</section>
+</div>

@@ -5,6 +5,6 @@
   const session = getPanelSession();
 </script>
 
-<section class="root-workspace" aria-labelledby="root-page-heading">
+<div class="root-workspace">
   <RootOverview api={session.api} />
-</section>
+</div>

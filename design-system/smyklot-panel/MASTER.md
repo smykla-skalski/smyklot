@@ -939,3 +939,7 @@ expansion and all-results actions remain outside the listbox and are reached
 with Tab, along with Close. Tab does not visit each option. The named modal
 contains focus, and Escape or Close returns it to the invoker. Name result
 groups by category and console so cross-scope navigation is explicit.
+
+## Console landmark ownership
+
+Route wrappers provide layout only. Use an ordinary container for `root-workspace`; do not name it after a heading owned by its child. The application shell owns the single main landmark. Page components may expose a region when it is a useful navigation destination, named by their visible heading. Independent sibling regions need distinct names. Loading and error states must not leave references to absent headings. Verify console landmark uniqueness across route variants when changing page structure.
