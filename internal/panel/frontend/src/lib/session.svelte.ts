@@ -86,6 +86,8 @@ export class PanelSession {
   readonly queryClient: QueryClient;
 
   loading = $state(true);
+  private syncPlanFocusTarget = $state<{ targetId: string; elementId: string } | null>(null);
+  private syncPlanReturnFocus: { targetId: string; elementId: string } | null = null;
   private syncRequestFocusTarget = $state<string | null>(null);
   // The controller identity cache is not rendered. Each controller owns its reactivity.
   private readonly syncRequests: Record<string, SyncRequestController> = {};
@@ -635,15 +637,34 @@ export class PanelSession {
         });
   }
 
-  openSyncPlan(planId: string, history = false): void {
+  openSyncPlan(planId: string, history = false, returnFocusId = ''): void {
     const target = this.selectedTarget;
     if (target === null) return;
+    this.syncPlanReturnFocus = returnFocusId
+      ? { targetId: target.id, elementId: returnFocusId }
+      : null;
     void this.navigate({
       account: target.account.login,
       view: 'sync',
       sync: history ? 'history' : 'plan',
       syncPlan: planId,
     });
+  }
+
+  async closeSyncPlan(): Promise<void> {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    const destination = this.syncPlanReturnFocus;
+    this.syncPlanReturnFocus = null;
+    await this.navigate(this.syncRoute(target, 'overview'));
+    this.syncPlanFocusTarget = destination;
+  }
+
+  restoreSyncPlanFocus(targetId: string, element: HTMLElement): void {
+    const destination = this.syncPlanFocusTarget;
+    if (destination?.targetId !== targetId || destination.elementId !== element.id) return;
+    this.syncPlanFocusTarget = null;
+    if (this.selectedId === targetId && this.currentSyncSection === 'overview') element.focus();
   }
 
   selectSyncSection(section: SyncSection): void {

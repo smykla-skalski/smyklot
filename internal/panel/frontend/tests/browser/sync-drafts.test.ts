@@ -271,7 +271,15 @@ describe('automatic sync status interactions', () => {
         expect(await inspector.getByRole('button', { name: /Approve/ }).count()).toBe(0);
         await page.keyboard.press('Escape');
         await inspector.waitFor({ state: 'detached' });
-        expect(await changes.evaluate((element) => element === document.activeElement)).toBe(true);
+        await expect
+          .poll(() => changes.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        await changes.click();
+        await inspector.getByRole('button', { name: 'Close sync details', exact: true }).click();
+        await inspector.waitFor({ state: 'detached' });
+        await expect
+          .poll(() => changes.evaluate((element) => element === document.activeElement))
+          .toBe(true);
         const first = rows.first();
         const trigger = first.getByRole('button');
         const geometry = await first.evaluate((row) => {
@@ -308,10 +316,10 @@ describe('automatic sync status interactions', () => {
         const lastName = await rows.last().locator('.object-name').innerText();
         await page.getByRole('button', { name: 'Show fewer repositories' }).click();
         await expect.poll(() => rows.count()).toBe(8);
-        await page.getByRole('searchbox', { name: 'Find a syncing repository' }).fill(lastName);
+        await page.getByRole('searchbox', { name: 'Find a repository' }).fill(lastName);
         await expect.poll(() => rows.count()).toBe(1);
         expect(await rows.first().locator('.object-name').innerText()).toBe(lastName);
-        await page.getByRole('searchbox', { name: 'Find a syncing repository' }).fill('');
+        await page.getByRole('searchbox', { name: 'Find a repository' }).fill('');
 
         const configuration = page.getByRole('region', {
           name: 'Shared configuration',

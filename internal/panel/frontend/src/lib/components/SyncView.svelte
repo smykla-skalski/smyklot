@@ -99,6 +99,8 @@
     fetchCheck,
     checkEvidenceApi,
     onOpenPlan,
+    onClosePlan,
+    onDetailsReady,
     approvePlan,
     discardPlan,
     runSyncNow = async () => {
@@ -164,7 +166,9 @@
     onOpenCheck: (id: string) => void;
     onOpenHistoryResult: (id: string) => void;
     selectedPlanId?: string | null;
-    onOpenPlan?: (planId: string) => void;
+    onOpenPlan?: (planId: string, returnFocusId: string) => void;
+    onClosePlan?: () => Promise<void>;
+    onDetailsReady?: (element: HTMLElement) => void;
     fetchPlan: (
       targetId: string,
       planId?: string,
@@ -294,13 +298,14 @@
     detailsOpen = false;
     if (section === 'plan') {
       if (selectedCheckId !== null) onOpenCheck(selectedCheckId);
+      else if (onClosePlan) void onClosePlan();
       else onOpenSection('overview');
     }
     if (section === 'history') onOpenSection('history');
   }
   function openDetails(trigger: HTMLElement): void {
     detailsTrigger = trigger;
-    if (plan !== null && onOpenPlan !== undefined) onOpenPlan(plan.id);
+    if (plan !== null && onOpenPlan !== undefined) onOpenPlan(plan.id, trigger.id);
     else detailsOpen = true;
   }
   let filesContext = $state<SyncFilesContext | null>(null);
@@ -735,6 +740,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       checkPending={pendingRequest !== null || requestStorageProblem !== null}
       onCheck={() => void onRunNow({ action: 'check', reason: 'Check sync from the status view' })}
       onDetails={openDetails}
+      {onDetailsReady}
       {sectionHref}
       {onOpenSection}
       onToggleKind={toggleKind}

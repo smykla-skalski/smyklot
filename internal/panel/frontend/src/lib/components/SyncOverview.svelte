@@ -40,6 +40,7 @@
     feedback,
     onCheck = () => {},
     onDetails = () => {},
+    onDetailsReady,
     repositoryHref = null,
     permissionsHref = null,
     queueHref = null,
@@ -63,6 +64,7 @@
     feedback?: Snippet;
     onCheck?: () => void;
     onDetails?: (trigger: HTMLElement) => void;
+    onDetailsReady?: (element: HTMLElement) => void;
     repositoryHref?: ((repository: string) => string) | null;
   } = $props();
 
@@ -218,8 +220,11 @@ beside the affected repository. Change details open over this view, preserving c
             {:else}Sync continues in the background{/if}
           </span>
         </div>
-        <Button tone="quiet" onclick={(event) => onDetails(event.currentTarget)}
-          >View changes</Button
+        <Button
+          id="sync-view-changes"
+          {@attach (element) => onDetailsReady?.(element as HTMLElement)}
+          tone="quiet"
+          onclick={(event) => onDetails(event.currentTarget)}>View changes</Button
         >
       </div>
     {/if}
@@ -245,8 +250,11 @@ beside the affected repository. Change details open over this view, preserving c
               </div>
               <div class="object-side">
                 {#if issue.id === 'system:legacy-approval'}
-                  <Button row onclick={(event) => onDetails(event.currentTarget)}
-                    >Review changes</Button
+                  <Button
+                    id="sync-review-changes"
+                    {@attach (element) => onDetailsReady?.(element as HTMLElement)}
+                    row
+                    onclick={(event) => onDetails(event.currentTarget)}>Review changes</Button
                   >
                 {:else if issue.queue && queueHref}
                   <Button row href={queueHref}>Open Queue</Button>
@@ -438,6 +446,8 @@ beside the affected repository. Change details open over this view, preserving c
                   </p>{/if}
                 <div class="object-side">
                   {#if plan?.actions.some((action) => action.repository === row.repository)}<Button
+                      id={`sync-view-changes-${row.repository}`}
+                      {@attach (element) => onDetailsReady?.(element as HTMLElement)}
                       tone="quiet"
                       onclick={(event) => onDetails(event.currentTarget)}>View changes</Button
                     >{/if}

@@ -196,7 +196,10 @@ history is routed with its section. That is what makes an address like
             checkResultHref={(checkId, planId) => session.syncCheckResultHref(checkId, planId)}
             onOpenCheck={(id) => session.openSyncCheck(id)}
             selectedPlanId={session.currentSyncPlan}
-            onOpenPlan={(id) => session.openSyncPlan(id)}
+            onOpenPlan={(id, returnFocusId) => session.openSyncPlan(id, false, returnFocusId)}
+            onClosePlan={() => session.closeSyncPlan()}
+            onDetailsReady={(element) =>
+              session.restoreSyncPlanFocus(session.selectedTarget!.id, element)}
             approvePlan={session.api.approveSyncPlan}
             discardPlan={session.api.discardSyncPlan}
             runSyncNow={session.api.runSyncNow}
