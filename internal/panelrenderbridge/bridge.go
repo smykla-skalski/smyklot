@@ -20,9 +20,16 @@ type TimezoneRequest struct {
 	At       string `json:"at"`
 }
 
+// SchedulePreviewRequest resolves an unsaved profile on its local calendar date.
+type SchedulePreviewRequest struct {
+	Date    string            `json:"date"`
+	Profile workqueue.Profile `json:"profile"`
+}
+
 // Request is one render or timezone message. InheritedLayers identifies the layers
 // below the current editor so render requests return both formatting policies.
 type Request struct {
+	SchedulePreview *SchedulePreviewRequest `json:"schedule_preview,omitempty"`
 	TimezonePreview *TimezoneRequest        `json:"timezone_preview,omitempty"`
 	Version         int                     `json:"version"`
 	ID              string                  `json:"id"`
@@ -50,6 +57,7 @@ type Diagnostic struct {
 
 // Response is one correlated render answer.
 type Response struct {
+	SchedulePreview   *workqueue.DatePreview     `json:"schedule_preview,omitempty"`
 	TimezonePreview   *workqueue.TimezonePreview `json:"timezone_preview,omitempty"`
 	Version           int                        `json:"version"`
 	ID                string                     `json:"id"`
@@ -67,6 +75,17 @@ func Render(request Request) Response {
 	answer := baseResponse(request.ID)
 	if request.Version != ProtocolVersion || request.ID == "" {
 		return invalid(answer, "request", "invalid_request", "the render request is invalid")
+	}
+	if request.SchedulePreview != nil {
+		profile := request.SchedulePreview.Profile
+		profile.ID = "preview"
+		preview, err := workqueue.PreviewDate(profile, request.SchedulePreview.Date)
+		if err != nil {
+			return invalid(answer, "schedule", "invalid_schedule", err.Error())
+		}
+		answer.Valid = true
+		answer.SchedulePreview = &preview
+		return answer
 	}
 	if request.TimezonePreview != nil {
 		at, err := time.Parse(time.RFC3339Nano, request.TimezonePreview.At)

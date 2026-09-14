@@ -233,6 +233,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST "+base+"/api/v1/sign-out", s.signOut)
 	mux.HandleFunc("GET "+base+"/api/v1/session", s.getSession)
 	mux.HandleFunc("GET "+base+"/api/v1/schedule-timezone", s.getScheduleTimezone)
+	mux.HandleFunc("POST "+base+"/api/v1/schedule-preview", s.postSchedulePreview)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
 	mux.HandleFunc("GET "+base+"/api/v1/notifications", s.getSecurityNotifications)
 	mux.HandleFunc(

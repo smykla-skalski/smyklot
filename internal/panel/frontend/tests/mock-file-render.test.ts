@@ -144,3 +144,29 @@ describe('authoritative timezone preview [Integration]', () => {
     );
   });
 });
+
+it('previews unsaved schedule dates through the Go execution rules', async () => {
+  const input = {
+    date: '2026-10-25',
+    profile: {
+      name: 'Unsaved',
+      timezone: 'Europe/Warsaw',
+      windows: [],
+      exceptions: [{ date: '2026-10-25', closed: false, start_minute: 135, end_minute: 165 }],
+    },
+  };
+  const result = await renderer.previewSchedule(input);
+  expect(result.valid).toBe(true);
+  expect(result.schedule_preview?.windows).toEqual([
+    {
+      start_minute: 135,
+      end_minute: 165,
+      available: true,
+      opens_at: '2026-10-25T02:15:00+02:00',
+      closes_at: '2026-10-25T02:45:00+01:00',
+    },
+  ]);
+  const invalid = await renderer.previewSchedule({ ...input, date: '2026-02-30' });
+  expect(invalid.valid).toBe(false);
+  expect(invalid.diagnostics[0]?.code).toBe('invalid_schedule');
+});

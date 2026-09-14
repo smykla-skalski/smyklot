@@ -1,3 +1,8 @@
+import {
+  parseScheduleDatePreview,
+  type ScheduleDatePreview,
+  type SchedulePreviewInput,
+} from '../src/lib/schedule-preview';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -51,6 +56,7 @@ export interface TimezonePreview {
 }
 
 export interface GoRenderResponse {
+  schedule_preview?: ScheduleDatePreview;
   timezone_preview?: TimezonePreview;
   valid: boolean;
   final_content: string;
@@ -77,8 +83,15 @@ export class GoFileRenderer {
     return this.#request({ timezone_preview: { timezone, at } });
   }
 
+  previewSchedule(input: SchedulePreviewInput): Promise<GoRenderResponse> {
+    return this.#request({ schedule_preview: input });
+  }
+
   #request(
-    input: GoRenderInput | { timezone_preview: { timezone: string; at: string } },
+    input:
+      | GoRenderInput
+      | { timezone_preview: { timezone: string; at: string } }
+      | { schedule_preview: SchedulePreviewInput },
   ): Promise<GoRenderResponse> {
     const child = this.#runningProcess();
     const id = `render-${(this.#sequence += 1)}`;
@@ -164,6 +177,7 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     'provenance',
     'diagnostics',
     'timezone_preview',
+    'schedule_preview',
   ]);
   const inherited = parseFormattingPolicy(record?.inherited_policy);
   const effective = parseFormattingPolicy(record?.effective_policy);
@@ -183,6 +197,9 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     throw new TypeError('the Go development renderer returned an invalid response');
   }
   return {
+    ...(record.schedule_preview === undefined
+      ? {}
+      : { schedule_preview: parseScheduleDatePreview(record.schedule_preview) }),
     ...(record.timezone_preview === undefined
       ? {}
       : { timezone_preview: parseTimezonePreview(record.timezone_preview) }),

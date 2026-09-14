@@ -1,3 +1,4 @@
+import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
 import { scheduleHoursProblems } from '../src/lib/schedule-validation';
 import {
   parseRuntimeBehavior,
@@ -1598,6 +1599,19 @@ async function handle(
             ),
         ),
       );
+      return;
+    }
+    if (path === route('/api/v1/schedule-preview') && method === 'POST') {
+      const preview = await state.fileRenderer.previewSchedule(
+        await readBody<SchedulePreviewInput>(req),
+      );
+      if (!preview.valid) {
+        const problem = preview.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (preview.schedule_preview === undefined)
+        throw new Error('Missing authoritative schedule preview');
+      respond(res, 200, preview.schedule_preview);
       return;
     }
     if (path === route('/api/v1/schedule-timezone') && method === 'GET') {

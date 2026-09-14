@@ -135,6 +135,41 @@ describe('desktop hours draft protection', () => {
     },
   );
 
+  it('previews unsaved schedule dates without changing mock profiles', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+    try {
+      const profiles = addressOf(panel, 'api/v1/root/schedule-profiles');
+      const before = await (await page.request.get(profiles)).json();
+      const input = {
+        date: '2026-10-25',
+        profile: {
+          name: 'Unsaved',
+          timezone: 'Europe/Warsaw',
+          windows: [],
+          exceptions: [{ date: '2026-10-25', closed: false, start_minute: 135, end_minute: 165 }],
+        },
+      };
+      const endpoint = addressOf(panel, 'api/v1/schedule-preview');
+      const response = await page.request.post(endpoint, { data: input });
+      expect(response.status()).toBe(200);
+      expect((await response.json()).windows).toEqual([
+        {
+          start_minute: 135,
+          end_minute: 165,
+          available: true,
+          opens_at: '2026-10-25T02:15:00+02:00',
+          closes_at: '2026-10-25T02:45:00+01:00',
+        },
+      ]);
+      expect(
+        (await page.request.post(endpoint, { data: { ...input, date: '2026-02-30' } })).status(),
+      ).toBe(400);
+      expect(await (await page.request.get(profiles)).json()).toEqual(before);
+    } finally {
+      await page.close();
+    }
+  });
+
   it('previews schedule timezones with the authoritative Go database', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     try {
