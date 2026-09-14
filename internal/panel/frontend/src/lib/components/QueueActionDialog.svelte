@@ -199,7 +199,9 @@ to ask it four different ways.
           id="queue-action-time"
           type="datetime-local"
           required
-          aria-describedby="queue-action-time-help"
+          aria-describedby={resolution?.options.length === 0
+            ? 'queue-action-time-help queue-action-time-error'
+            : 'queue-action-time-help'}
           aria-invalid={resolution?.options.length === 0}
           oninput={() => invalidatePreview(true)}
           bind:value={at}
@@ -208,17 +210,18 @@ to ask it four different ways.
           Required. Enter a time in {timezone}, your browser's timezone.
         </p>
         {#if resolution?.options.length === 0}
-          <p class="form-error" role="alert">
+          <p id="queue-action-time-error" class="form-error" role="alert">
             This time does not occur in {timezone} because the clocks change. Choose another time.
           </p>
         {:else if resolution && resolution.options.length > 1}
-          <p class="form-help" role="status">
+          <p id="queue-action-occurrence-help" class="form-help" role="status">
             This time occurs more than once because the clocks change. Choose which occurrence you
             mean.
           </p>
           <label class="form-label" for="queue-action-occurrence">Occurrence</label>
           <Select
             id="queue-action-occurrence"
+            aria-describedby="queue-action-occurrence-help"
             required
             disabled={busy}
             value={instant || undefined}

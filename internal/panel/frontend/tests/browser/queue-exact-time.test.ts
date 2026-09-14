@@ -56,6 +56,7 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
           await preview.click();
           await dialog.getByRole('alert').waitFor();
           expect(await input.getAttribute('aria-invalid')).toBe('true');
+          expect(await input.getAttribute('aria-describedby')).toContain('queue-action-time-error');
           expect(requested).toEqual([]);
           expect(
             await dialog.getByRole('button', { name: 'Apply', exact: true }).isDisabled(),
@@ -114,3 +115,101 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
     },
   );
 }
+
+it.each(['light', 'dark'] as const)(
+  'keeps the latest exact-time preview in %s desktop',
+  async (colorScheme) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      timezoneId: 'Europe/Warsaw',
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    let releaseOld = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    let sawOld = () => {};
+    const oldStarted = new Promise<void>((resolve) => {
+      sawOld = resolve;
+    });
+    try {
+      let resolutions = 0;
+      await page.route('**/schedule-local-time?*', async (route) => {
+        resolutions++;
+        if (resolutions !== 1) return route.continue();
+        await route.fulfill({
+          status: 503,
+          json: {
+            error: { code: 'unavailable', message: 'Time lookup is unavailable. Try again.' },
+          },
+        });
+      });
+      let previews = 0;
+      await page.route('**/queue/*/actions/preview', async (route) => {
+        previews++;
+        if (previews !== 1) return route.continue();
+        const response = await route.fetch();
+        sawOld();
+        await held;
+        await route.fulfill({ response });
+      });
+      await page.goto(`${panel.origin}/root/queue`);
+      await page
+        .getByRole('button', { name: 'Actions for Scan for new commands', exact: true })
+        .click();
+      await page.getByRole('menuitem', { name: /^Schedule exact time/ }).click();
+      const dialog = page.getByRole('dialog', { name: 'Schedule exact time', exact: true });
+      const input = dialog.getByLabel('Not before', { exact: true });
+      const preview = dialog.getByRole('button', { name: 'Preview earliest start', exact: true });
+      const apply = dialog.getByRole('button', { name: 'Apply', exact: true });
+      await input.fill('2026-10-26T02:30');
+      await preview.focus();
+      await page.keyboard.press('Enter');
+      await dialog.getByText('Time lookup is unavailable. Try again.', { exact: true }).waitFor();
+      expect(await input.inputValue()).toBe('2026-10-26T02:30');
+      expect(await apply.isDisabled()).toBe(true);
+      expect(await preview.evaluate((element) => element === document.activeElement)).toBe(true);
+      await page.keyboard.press('Enter');
+      await oldStarted;
+      const calculating = dialog.getByRole('button', { name: 'Calculating…', exact: true });
+      expect(await calculating.getAttribute('aria-disabled')).toBe('true');
+      expect(await calculating.evaluate((element) => element === document.activeElement)).toBe(
+        true,
+      );
+      await page.keyboard.press('Enter');
+      expect(previews).toBe(1);
+      await input.fill('2026-10-27T02:30');
+      await preview.click();
+      const time = dialog.locator('.schedule-preview time');
+      await time.waitFor();
+      expect(Date.parse((await time.getAttribute('datetime'))!)).toBe(
+        Date.parse('2026-10-27T01:30:00Z'),
+      );
+      const oldReturned = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/actions/preview') &&
+          response.request().postDataJSON().at === '2026-10-26T01:30:00Z',
+      );
+      releaseOld();
+      await oldReturned;
+      // Let the returned request's promise handlers and the next render complete.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      expect(Date.parse((await time.getAttribute('datetime'))!)).toBe(
+        Date.parse('2026-10-27T01:30:00Z'),
+      );
+      expect(await apply.isDisabled()).toBe(false);
+      expect(resolutions).toBe(3);
+      expect(previews).toBe(2);
+    } finally {
+      releaseOld();
+      await page.close();
+    }
+  },
+);
