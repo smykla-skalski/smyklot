@@ -69,6 +69,29 @@ fi
 
 echo "every Go suite is named exactly once by the go matrix in $workflow"
 
+# The SQLite bootstrap is excluded from the support pass and partitioned on
+# separate runners. Verify the workflow schedules every partition exactly once.
+expected_shards="$(node --input-type=module -e '
+  import { shardCount } from "./scripts/storage-shards.mjs";
+  console.log(Array.from({length: shardCount}, (_, i) => i + 1).join(" "));
+')"
+actual_shards="$(yq -r '.jobs.sqlite.strategy.matrix.shard | join(" ")' "$workflow")"
+if [ "$actual_shards" != "$expected_shards" ]; then
+  echo "SQLite matrix must run shards $expected_shards exactly once" >&2
+  exit 1
+fi
+storage_task="$(yq -r '.jobs.go.steps[] | select(.name == "Run storage helpers and migrations") | .run' "$workflow")"
+if [ "$storage_task" != "mise run test:storage:support" ]; then
+  echo "storage must use test:storage:support to avoid repeating SQLite specs" >&2
+  exit 1
+fi
+storage_dirs="$(yq -r '.jobs.go.strategy.matrix.include[] | select(.area == "storage") | .dirs' "$workflow")"
+if [ "$storage_dirs" != "./internal/storage" ]; then
+  echo "storage support's package list must match ./internal/storage/..." >&2
+  exit 1
+fi
+node --test scripts/storage-shards.test.mjs
+
 # Being named by the matrix is not the same as being run. Ginkgo specs are
 # registered by Describe at init and executed by one RunSpecs bootstrap; a
 # package that has the first and not the second compiles, reports ok, and runs

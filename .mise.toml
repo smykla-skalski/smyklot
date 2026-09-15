@@ -67,6 +67,30 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:storage:support"]
+description = "Run storage helpers and migrations once, excluding the sharded SQLite bootstrap"
+env = { CGO_ENABLED = "1" }
+run = 'go test -race -count=1 -skip=^TestSQLite$ ./internal/storage/...'
+
+[tasks."test:storage:shard"]
+description = "Run one balanced SQLite conformance shard with race detection"
+env = { CGO_ENABLED = "1" }
+run = 'node scripts/storage-shards.mjs {{arg(name="shard")}}'
+
+[tasks."test:storage:partition"]
+description = "Check storage shard coverage and balancing guards"
+run = "node --test scripts/storage-shards.test.mjs"
+
+[tasks."test:storage:rebalance"]
+description = "Update shard weights from a full profile or all CI shard reports"
+run = 'node scripts/storage-shards.mjs --update-timings {{arg(name="reports", var=true)}}'
+
+# Keep an unfiltered timing report for rebalancing the distributed SQLite specs.
+[tasks."test:storage:profile"]
+description = "Measure SQLite spec durations with race detection"
+env = { CGO_ENABLED = "1" }
+run = "ginkgo -p --race --fail-on-empty --json-report=tmp/storage/profile.json ./internal/storage/sqlite -- -test.run=^TestSQLite$"
+
 [tasks."test:storage:sync-requests"]
 description = "Check accepted sync request reads on SQLite and PostgreSQL"
 env = { CGO_ENABLED = "1" }

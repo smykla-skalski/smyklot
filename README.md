@@ -696,6 +696,14 @@ Current test coverage: 130+ tests passing
 - 30 feedback system tests
 - 18+ GitHub client tests
 
+### Storage CI timing
+
+SQLite conformance runs in three duration-balanced shards, with race detection in each. Storage helpers and migrations run once in `go (storage)`. PostgreSQL keeps its separate engine pass. Each shard discovers the current specs and proves that every assigned spec passed. New specs receive the median timing weight automatically.
+
+Run one shard with `mise run test:storage:shard 1`, or the migration and helper tests with `mise run test:storage:support`. `mise run test:storage` still runs the complete local storage suite. The matrix guard rejects missing or repeated shard numbers.
+
+CI uploads `sqlite-N-timings` artifacts. To rebalance, download all three `results.json` reports into separate directories, then run `mise run test:storage:rebalance <report-1> <report-2> <report-3>`. This rejects incomplete or repeated coverage. Alternatively, run `mise run test:storage:profile` followed by `mise run test:storage:rebalance tmp/storage/profile.json`. Commit the updated `scripts/storage-spec-times.json` with the change. Initial weights come from a local race-enabled profile of all 362 specs on September 15, 2026. Prefer CI timings for subsequent updates because runner performance differs.
+
 ## Contributing
 
 1. Fork the repository

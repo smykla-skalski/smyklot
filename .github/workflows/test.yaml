@@ -77,7 +77,38 @@ jobs:
 
       # No DSN, so this is the SQLite pass.
       - name: Run the suite
+        if: matrix.area != 'storage'
         run: mise run test ${{ matrix.dirs }}
+      - name: Run storage helpers and migrations
+        if: matrix.area == 'storage'
+        run: mise run test:storage:support
+
+  # SQLite conformance dominated storage at 6m38s, plus migrations and compile
+  # time. Run independent specs on three runners, weighted by their durations.
+  # The storage area above still runs every ordinary Go test exactly once.
+  sqlite:
+    name: go (sqlite-${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          go-cache: sqlite-${{ matrix.shard }}
+      - name: Run the suite
+        run: mise run test:storage:shard ${{ matrix.shard }}
+      - name: Save SQLite timing reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sqlite-${{ matrix.shard }}-timings
+          path: tmp/storage/shard-${{ matrix.shard }}/*.json
+          retention-days: 14
 
   # The second engine. Everything above the port opens whichever one the
   # environment names, so these are the same suites again against PostgreSQL -
