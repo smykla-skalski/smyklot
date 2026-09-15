@@ -37,9 +37,8 @@ jobs:
   # its own runner is the only parallelism available between suites, and `-p`
   # inside each is the only parallelism available within one.
   #
-  # The areas are split by what they cost rather than by what they mean:
-  # cmd/smyklot and internal/panel are each about as expensive as
-  # everything under pkg put together.
+  # Balance by measured cost: configuration sync shares the storage support
+  # lane, panel shares the remaining packages, and service uses two shards.
   #
   # `ginkgo -r` recurses from every directory it is given, so an area naming a
   # parent has already named everything beneath it. Naming a child as well runs
@@ -54,15 +53,18 @@ jobs:
       matrix:
         include:
           - area: service
+            shard: 1
+            dirs: ./cmd/smyklot
+          - area: service-2
+            shard: 2
             dirs: ./cmd/smyklot
           - area: panel
-            dirs: ./internal/panel ./internal/panelassets ./internal/panelcontract ./internal/panelrenderbridge
-          - area: storage
-            dirs: ./internal/storage
-          - area: packages
             dirs: >-
+              ./internal/panel ./internal/panelassets ./internal/panelcontract ./internal/panelrenderbridge
               ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
-              ./internal/bot ./internal/workqueue ./internal/configsync
+              ./internal/bot ./internal/workqueue
+          - area: storage
+            dirs: ./internal/storage ./internal/configsync
 
     steps:
       - name: Checkout code
@@ -73,15 +75,26 @@ jobs:
       - name: Install the toolchain
         uses: ./.github/actions/toolchain
         with:
-          go-cache: ${{ matrix.area }}
+          go-cache: ${{ matrix.shard && 'service' || matrix.area }}
 
       # No DSN, so this is the SQLite pass.
       - name: Run the suite
-        if: matrix.area != 'storage'
+        if: matrix.area != 'storage' && !matrix.shard
         run: mise run test ${{ matrix.dirs }}
       - name: Run storage helpers and migrations
         if: matrix.area == 'storage'
-        run: mise run test:storage:support
+        run: mise run test:ci:support
+
+      - name: Run the service shard
+        if: matrix.shard
+        run: mise run test:service:shard sqlite ${{ matrix.shard }}
+      - name: Save service timing reports
+        if: always() && matrix.shard
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: service-sqlite-${{ matrix.shard }}-timings
+          path: tmp/service-sqlite/shard-${{ matrix.shard }}/*.json
+          retention-days: 14
 
   # SQLite conformance dominated storage at 6m38s, plus migrations and compile
   # time. Run independent specs on three runners, weighted by their durations.
@@ -127,18 +140,13 @@ jobs:
             task: test:storage:postgres
             dirs: ''
           - area: service
-            task: test:postgres
-            dirs: ./cmd/smyklot
-          # Four of the pending CI suites open a store, and until they moved out
-          # of cmd the service entry above was running them. check-test-matrix
-          # deliberately reads only the SQLite matrix, so nothing would have
-          # said the second engine had quietly stopped covering them.
-          - area: pendingci
-            task: test:postgres
-            dirs: ./internal/pendingci/gate
+            shard: 1
+          - area: service-2
+            shard: 2
+          # Keep pending-CI engine coverage alongside the shorter panel pass.
           - area: panel
             task: test:postgres
-            dirs: ./internal/panel
+            dirs: ./internal/panel ./internal/pendingci/gate
 
     services:
       postgres:
@@ -176,36 +184,25 @@ jobs:
       - name: Install the toolchain
         uses: ./.github/actions/toolchain
         with:
-          go-cache: postgres-${{ matrix.area }}
+          go-cache: ${{ matrix.shard && 'postgres-service' || format('postgres-{0}', matrix.area) }}
 
       - name: Run the suite
+        if: ${{ !matrix.shard }}
         run: mise run ${{ matrix.task }} ${{ matrix.dirs }}
+      - name: Run the service shard
+        if: matrix.shard
+        run: mise run test:service:shard postgres ${{ matrix.shard }}
 
-  lint:
-    name: lint (go)
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Save service timing reports
+        if: always() && matrix.shard
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          fetch-depth: 1
+          name: service-postgres-${{ matrix.shard }}-timings
+          path: tmp/service-postgres/shard-${{ matrix.shard }}/*.json
+          retention-days: 14
 
-      - name: Install the toolchain
-        uses: ./.github/actions/toolchain
-        with:
-          go-cache: lint
-
-      - name: Run linters
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          # Pinned, and matching .mise.toml, so a local run sees what CI sees.
-          # On "latest" a new upstream rule fails a pull request that never
-          # touched the code it fires on
-          version: v2.13.2
-
-  # The checks that cost seconds each. They are one job because the runner takes
-  # longer to acquire than all of them take to run.
+  # Consolidate the shorter checks, including lint and frontend unit tests.
+  # This frees runner slots for service and browser shards without dropping gates.
   checks:
     name: checks
     runs-on: ubuntu-24.04
@@ -219,7 +216,7 @@ jobs:
       - name: Install the toolchain
         uses: ./.github/actions/toolchain
         with:
-          go-cache: checks
+          go-cache: lint
 
       - name: Verify modules
         run: mise run lint:mod
@@ -256,10 +253,22 @@ jobs:
       - name: Test panel dependency cache restoration
         run: mise run test:panel-install
 
-  # Two jobs rather than one step after the other, because together they were
-  # 67s of the last release and either one alone is half of that. They share
-  # nothing but the restored `node_modules`, so there was never an order between
-  # them - only a runner.
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+
+      - name: Restore the panel's dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: internal/panel/frontend/node_modules
+          key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      - name: Check the frontend
+        run: mise run panel:frontend:quality
+
+  # Keep the catalogue build separate; the shorter frontend checks share the
+  # checks runner so long-running suites are not queued behind tiny jobs.
   frontend:
     name: frontend (${{ matrix.area }})
     runs-on: ubuntu-24.04
@@ -267,10 +276,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - area: lint
-            task: panel:frontend:lint
-          - area: unit
-            task: panel:frontend:test
           # `storybook build` is the only thing that runs the catalogue's
           # production bundle, and it exits 0 on one that throws before it
           # renders. Without this the whole build-only failure class is green on
@@ -311,8 +316,8 @@ jobs:
   #
   # Balance by measured suite duration, not by subject. Run 34108122171 took
   # 17 minutes in `type` while `phone` and `columns` finished in two minutes.
-  # The same 33 suites across six runners now total 314-319 seconds per group,
-  # using that run's per-file timings, before runner setup and new test cases.
+  # Run 34938622154 now supplies timings for all 40 suites. Seven groups total
+  # 303-309 seconds each, before runner setup, with no test coverage removed.
   # Rebalance when a group grows; keep the exact-once coverage check below.
   #
   # NOT EVERY FILE IS HERE, and which are missing is a decision rather than an
@@ -333,64 +338,67 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 319s in the reference run
+          # 304s in run 34938622154
           - area: group-1
             files: >-
-              tests/browser/duration-controls.test.ts
-              tests/browser/wcag-audit.test.ts
-              tests/browser/text-clipping.test.ts
-              tests/browser/bypass-identities.test.ts
-              tests/browser/signed-out-layout.test.ts
-              tests/browser/installation.test.ts
-              tests/browser/queue-occurrences.test.ts
+              tests/browser/settings-draft-markers.test.ts
+              tests/browser/empty-states.test.ts
+              tests/browser/control-heights.test.ts
               tests/browser/queue-names.test.ts
-              tests/browser/queue-exact-time.test.ts
-              tests/browser/required-reasons.test.ts
-          # 319s in the reference run
+              tests/browser/access-navigation.test.ts
+          # 309s in run 34938622154
           - area: group-2
             files: >-
-              tests/browser/config-file-sync.test.ts
-              tests/browser/select-menus.test.ts
-              tests/browser/control-heights.test.ts
-              tests/browser/sidebar-selection.test.ts
+              tests/browser/duration-controls.test.ts
+              tests/browser/vertical-alignment.test.ts
+              tests/browser/config-migration.test.ts
+              tests/browser/repository-file-sync.test.ts
+              tests/browser/pair-entry.test.ts
               tests/browser/sync-label-layout.test.ts
-          # 318s in the reference run
+          # 303s in run 34938622154
           - area: group-3
             files: >-
-              tests/browser/settings-draft-markers.test.ts
-              tests/browser/cached-navigation.test.ts
-              tests/browser/law-audit.test.ts
-              tests/browser/callout-alignment.test.ts
-              tests/browser/plan-rows.test.ts
-          # 314s in the reference run
+              tests/browser/config-file-sync.test.ts
+              tests/browser/wcag-audit.test.ts
+              tests/browser/text-clipping.test.ts
+              tests/browser/queue-exact-time.test.ts
+              tests/browser/segmented-control.test.ts
+          # 304s in run 34938622154
           - area: group-4
             files: >-
-              tests/browser/native-file-handoff.test.ts
-              tests/browser/mobile-layout.test.ts
-              tests/browser/config-migration.test.ts
+              tests/browser/file-formatting.test.ts
+              tests/browser/cached-navigation.test.ts
+              tests/browser/law-audit.test.ts
               tests/browser/request-budget.test.ts
-              tests/browser/repository-file-sync.test.ts
+              tests/browser/queue-occurrences.test.ts
               tests/browser/icon-geometry.test.ts
-          # 318s in the reference run
+          # 309s in run 34938622154
           - area: group-5
             files: >-
-              tests/browser/file-formatting.test.ts
-              tests/browser/dictionary.test.ts
-              tests/browser/file-validation-lifetime.test.ts
-              tests/browser/sync-drafts.test.ts
-              tests/browser/shared-file-lifecycle.test.ts
+              tests/browser/native-file-handoff.test.ts
               tests/browser/sync-observations.test.ts
-              tests/browser/segmented-control.test.ts
-              tests/browser/access-navigation.test.ts
-          # 319s in the reference run
+              tests/browser/file-validation-lifetime.test.ts
+              tests/browser/shared-file-lifecycle.test.ts
+              tests/browser/sidebar-selection.test.ts
+              tests/browser/plan-rows.test.ts
+          # 306s in run 34938622154
           - area: group-6
             files: >-
               tests/browser/config-file-review.test.ts
-              tests/browser/column-widths.test.ts
-              tests/browser/vertical-alignment.test.ts
-              tests/browser/empty-states.test.ts
+              tests/browser/select-menus.test.ts
               tests/browser/runtime-settings.test.ts
-              tests/browser/pair-entry.test.ts
+              tests/browser/bypass-identities.test.ts
+              tests/browser/required-reasons.test.ts
+              tests/browser/signed-out-layout.test.ts
+          # 304s in run 34938622154
+          - area: group-7
+            files: >-
+              tests/browser/column-widths.test.ts
+              tests/browser/dictionary.test.ts
+              tests/browser/mobile-layout.test.ts
+              tests/browser/sync-drafts.test.ts
+              tests/browser/installation.test.ts
+              tests/browser/callout-alignment.test.ts
 
     steps:
       - name: Checkout code

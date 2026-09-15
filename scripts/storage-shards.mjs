@@ -1,4 +1,4 @@
-// Partition SQLite's independent specs by recorded duration, longest first.
+// Partition independent Ginkgo specs by recorded duration, longest first.
 // New specs get the median weight and are always included in the partition.
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -10,7 +10,7 @@ export const weightsPath = new URL('./storage-spec-times.json', import.meta.url)
 
 export function specsFrom(report) {
   if (report.length !== 1 || report[0].SuiteHasProgrammaticFocus) {
-    throw new Error('Expected one unfocused SQLite suite')
+    throw new Error('Expected one unfocused Ginkgo suite')
   }
   const suite = report[0]
   const specs = suite.SpecReports.filter(spec => spec.LeafNodeType === 'It')
@@ -31,9 +31,12 @@ export function specsFrom(report) {
   return [...names.values()]
 }
 
-export function partition(specs, weights, count = shardCount) {
+export function partition(specs, weights, count = shardCount, firstShardOverhead = 0) {
   if (!Number.isInteger(count) || count < 1 || specs.length < count) {
     throw new Error('Each shard must contain specs')
+  }
+  if (!Number.isFinite(firstShardOverhead) || firstShardOverhead < 0 || firstShardOverhead >= 1) {
+    throw new Error('First-shard overhead must be a fraction from 0 to less than 1')
   }
   const recorded = Object.values(weights).sort((a, b) => a - b)
   if (!recorded.length || recorded.some(value => !Number.isFinite(value) || value <= 0)) {
@@ -43,7 +46,8 @@ export function partition(specs, weights, count = shardCount) {
   const weight = spec => weights[spec.name] ?? fallback
   const compare = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
   const sorted = [...specs].sort((a, b) => weight(b) - weight(a) || compare(a, b))
-  const groups = Array.from({ length: count }, () => ({ specs: [], seconds: 0 }))
+  const overhead = specs.reduce((sum, spec) => sum + weight(spec), 0) * firstShardOverhead
+  const groups = Array.from({ length: count }, (_, index) => ({ specs: [], seconds: index === 0 ? overhead : 0 }))
   for (const spec of sorted) {
     const group = groups.reduce((best, next) => next.seconds < best.seconds ? next : best)
     group.specs.push(spec)
@@ -67,11 +71,11 @@ export function verify(expected, actual) {
   }
 }
 
-function run(args, report) {
+function run(args, report, config) {
   rmSync(report, { force: true })
   const result = spawnSync('ginkgo', [
     '--race', '--fail-on-empty', `--json-report=${report}`, ...args,
-    './internal/storage/sqlite', '--', '-test.run=^TestSQLite$',
+    config.packagePath, '--', `-test.run=^${config.bootstrap}$`,
   ], { stdio: 'inherit' })
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`Ginkgo failed (${result.status ?? result.signal})`)
@@ -98,21 +102,27 @@ function main() {
     return
   }
 
-  const shard = Number(process.argv[2])
-  if (!Number.isInteger(shard) || shard < 1 || shard > shardCount) {
-    throw new Error(`Pass a shard number from 1 to ${shardCount}`)
+  executeShard({
+    count: shardCount, weightsPath, packagePath: './internal/storage/sqlite',
+    bootstrap: 'TestSQLite', outputRoot: 'tmp/storage',
+  }, Number(process.argv[2]))
+}
+
+export function executeShard(config, shard) {
+  if (!Number.isInteger(shard) || shard < 1 || shard > config.count) {
+    throw new Error(`Pass a shard number from 1 to ${config.count}`)
   }
-  const output = resolve(`tmp/storage/shard-${shard}`)
+  const output = resolve(`${config.outputRoot}/shard-${shard}`)
   mkdirSync(output, { recursive: true })
-  const inventory = run(['--dry-run'], `${output}/inventory.json`)
+  const inventory = run(['--dry-run'], `${output}/inventory.json`, config)
   if (inventory.some(spec => spec.state !== 'passed')) throw new Error('Inventory contains disabled specs')
-  const weights = JSON.parse(readFileSync(weightsPath, 'utf8'))
-  const groups = partition(inventory, weights)
+  const weights = JSON.parse(readFileSync(config.weightsPath, 'utf8'))
+  const groups = partition(inventory, weights, config.count, config.firstShardOverhead)
   for (const [index, group] of groups.entries()) {
     console.log(`Shard ${index + 1}: ${group.specs.reduce((sum, spec) => sum + spec.count, 0)} specs, ${group.seconds.toFixed(1)} weighted seconds`)
   }
   const selected = groups[shard - 1].specs
-  const actual = run(['-p', `--focus=${focusFor(selected)}`], `${output}/results.json`)
+  const actual = run(['-p', `--focus=${focusFor(selected)}`], `${output}/results.json`, config)
   verify(selected, actual)
   console.log(`Verified ${selected.reduce((sum, spec) => sum + spec.count, 0)} assigned specs passed on shard ${shard}`)
 }

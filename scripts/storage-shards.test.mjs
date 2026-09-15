@@ -72,3 +72,13 @@ test('rebalancing requires complete, nonduplicated timing coverage', () => {
   assert.throws(() => timingWeights([first]), /exactly its assigned/)
   assert.throws(() => timingWeights([first, first, second]), /repeat specs/)
 })
+
+test('reserves first-shard support work before allocating specs', () => {
+  const specs = ['a', 'b', 'c', 'd'].map(name => spec(name))
+  const groups = partition(specs, { a: 6, b: 4, c: 2, d: 2 }, 2, 0.5)
+  assert.deepEqual(groups.map(group => group.seconds), [11, 10])
+  assert.deepEqual(groups[0].specs.map(item => item.name), ['c', 'd'])
+  for (const overhead of [-1, 1, Infinity]) {
+    assert.throws(() => partition(specs, { a: 1 }, 2, overhead), /overhead/)
+  }
+})

@@ -81,15 +81,25 @@ if [ "$actual_shards" != "$expected_shards" ]; then
   exit 1
 fi
 storage_task="$(yq -r '.jobs.go.steps[] | select(.name == "Run storage helpers and migrations") | .run' "$workflow")"
-if [ "$storage_task" != "mise run test:storage:support" ]; then
-  echo "storage must use test:storage:support to avoid repeating SQLite specs" >&2
+if [ "$storage_task" != "mise run test:ci:support" ]; then
+  echo "storage must use test:ci:support to avoid repeating SQLite specs" >&2
   exit 1
 fi
 storage_dirs="$(yq -r '.jobs.go.strategy.matrix.include[] | select(.area == "storage") | .dirs' "$workflow")"
-if [ "$storage_dirs" != "./internal/storage" ]; then
-  echo "storage support's package list must match ./internal/storage/..." >&2
+if [ "$storage_dirs" != "./internal/storage ./internal/configsync" ]; then
+  echo "support's package list must cover storage and configsync" >&2
   exit 1
 fi
+# Both service engines use the same two partitions, with ordinary Go tests
+# running once on the first partition. Duplicate directory names here are
+# intentional; the shard inventory enforces exact-once spec coverage.
+for job in go postgres; do
+  service_shards="$(yq -r ".jobs.$job.strategy.matrix.include[] | select(.shard != null) | .shard" "$workflow" | tr '\n' ' ')"
+  if [ "$service_shards" != "1 2 " ]; then
+    echo "$job must schedule both service shards exactly once" >&2
+    exit 1
+  fi
+done
 node --test scripts/storage-shards.test.mjs
 
 # Being named by the matrix is not the same as being run. Ginkgo specs are
