@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.55.5](https://github.com/smykla-skalski/smyklot/compare/v1.55.4...v1.55.5) (2026-09-15)
+
+### Bug Fixes
+
+* **sync:** reuse open file proposals ([#394](https://github.com/smykla-skalski/smyklot/issues/394)) ([9683bc1](https://github.com/smykla-skalski/smyklot/commit/9683bc10e892da227b528f9d36e4dd8ba0d4dcd0))
+
 ## [1.55.4](https://github.com/smykla-skalski/smyklot/compare/v1.55.3...v1.55.4) (2026-09-14)
 
 ### Bug Fixes
