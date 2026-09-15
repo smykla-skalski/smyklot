@@ -227,7 +227,7 @@ func syncActionDetail(action orgsync.Action) *syncDetailDTO {
 
 	case orgsync.KindFiles:
 		file, err := orgsync.DecodeFile(action.Payload)
-		if err != nil {
+		if err != nil || file.ProposalOnly {
 			return nil
 		}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
-	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
 
 // repositoryAnswer separates work to do from evidence that needs no action.
@@ -259,29 +258,7 @@ func planRepositoryFiles(
 		return repositoryAnswer{problem: "these files cannot be composed: " + err.Error()}, nil
 	}
 
-	if len(plan.Actions) == 0 {
-		return repositoryAnswer{observation: orgsync.ObservationMatched}, nil
-	}
-
-	observation, err := proposalObservation(ctx, client, target, plan.Proposal)
-	if err != nil {
-		return repositoryAnswer{}, err
-	}
-
-	if observation.state != "" {
-		// Already asked, so there is nothing to plan. Preserve whether the
-		// proposal is open or declined instead of claiming the files match. This is the whole
-		// of what a file sync can do: propose. The branch is named after what
-		// the files should end up saying, so a configuration that changes is a
-		// different branch and the question is put once more.
-		logging.From(ctx).Info(
-			"this repository already has this change in front of it, so it is left alone",
-			"repo", repository.FullName, "branch", plan.Proposal)
-
-		return repositoryAnswer{observation: observation.state, proposalURL: observation.proposalURL}, nil
-	}
-
-	return compared(plan.Actions), nil
+	return reuseFileProposal(ctx, client, target, repository.ID, config, adjustments, formatting, plan)
 }
 
 // proposalObservation distinguishes an open proposal from a rejected one.
@@ -304,7 +281,10 @@ func proposalObservation(
 		return kindObservation{}, err
 	}
 
-	if pull.Merged {
+	if pull.Merged || strings.Contains(pull.Body, supersededMarker) {
+		return kindObservation{}, nil
+	}
+	if fingerprint := proposalFingerprint(pull.Body); fingerprint != "" && fingerprint != proposal {
 		return kindObservation{}, nil
 	}
 	if pull.State == github.PullRequestClosed {

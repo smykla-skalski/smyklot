@@ -49,10 +49,12 @@ const (
 
 // PullRequest is an opened pull request, as much of one as Smyklot reads.
 type PullRequest struct {
-	Number int
-	State  string
-	Merged bool
-	URL    string
+	Number  int
+	State   string
+	Merged  bool
+	URL     string
+	HeadRef string
+	Body    string
 }
 
 // GetRef resolves a git reference to the commit it points at.
@@ -260,7 +262,7 @@ func (c *Client) FindPullRequestByHead(
 		// one, closing it would be read as the repository refusing a change it
 		// was never shown.
 		Base:        base,
-		Sort:        "created",
+		Sort:        pullSortCreated,
 		Direction:   "desc",
 		ListOptions: gogithub.ListOptions{PerPage: 1},
 	})
@@ -279,9 +281,11 @@ func (c *Client) FindPullRequestByHead(
 
 func asPullRequest(pull *gogithub.PullRequest) PullRequest {
 	return PullRequest{
-		Number: pull.GetNumber(),
-		State:  pull.GetState(),
-		Merged: pull.GetMerged() || !pull.GetMergedAt().IsZero(),
-		URL:    pull.GetHTMLURL(),
+		Number:  pull.GetNumber(),
+		State:   pull.GetState(),
+		Merged:  pull.GetMerged() || !pull.GetMergedAt().IsZero(),
+		URL:     pull.GetHTMLURL(),
+		HeadRef: pull.GetHead().GetRef(),
+		Body:    pull.GetBody(),
 	}
 }

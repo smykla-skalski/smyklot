@@ -204,9 +204,10 @@ func decodeFileOverride(
 // different requests, and telling them apart by whether some bytes are missing
 // is how they come to be the same one.
 type plannedFile struct {
-	path    string
-	content []byte
-	remove  bool
+	path        string
+	content     []byte
+	remove      bool
+	fingerprint string
 }
 
 // applyFileActions puts one repository's whole file change behind one pull
@@ -223,8 +224,10 @@ func applyFileActions(
 	actions []orgsync.Action,
 ) (kindObservation, error) {
 	var (
-		files    []plannedFile
-		proposal string
+		files       []plannedFile
+		proposal    string
+		consolidate bool
+		fingerprint string
 	)
 
 	for _, action := range actions {
@@ -246,10 +249,19 @@ func applyFileActions(
 				orgsync.ErrInvalidPlan, proposal, planned.Proposal)
 		}
 
+		if len(files) > 0 && fingerprint != planned.Fingerprint {
+			return kindObservation{}, fmt.Errorf("%w: file work names different configurations", orgsync.ErrInvalidPlan)
+		}
+		fingerprint = planned.Fingerprint
+		consolidate = consolidate || planned.Consolidate
+		if planned.ProposalOnly {
+			continue
+		}
 		files = append(files, plannedFile{
-			path:    planned.Path,
-			content: planned.Content,
-			remove:  action.Operation == orgsync.OperationDelete,
+			path:        planned.Path,
+			content:     planned.Content,
+			remove:      action.Operation == orgsync.OperationDelete,
+			fingerprint: planned.Fingerprint,
 		})
 	}
 
@@ -257,7 +269,7 @@ func applyFileActions(
 		return kindObservation{}, fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
 	}
 
-	return proposeFiles(ctx, client, target, proposal, files)
+	return proposeFiles(ctx, client, target, proposal, files, consolidate, fingerprint)
 }
 
 // proposeFiles builds the commit and the pull request that carries it.
@@ -274,6 +286,8 @@ func proposeFiles(
 	target syncTarget,
 	proposal string,
 	files []plannedFile,
+	consolidate bool,
+	fingerprint string,
 ) (kindObservation, error) {
 	if target.DefaultBranch == "" {
 		return kindObservation{}, fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
@@ -284,6 +298,20 @@ func proposeFiles(
 		return kindObservation{}, err
 	}
 
+	if len(files) == 0 {
+		if branch.Pull == nil {
+			return kindObservation{}, fmt.Errorf("%w: the retained proposal is no longer open", errSyncFilesRefused)
+		}
+		if err := updateProposalFingerprint(ctx, client, target, *branch.Pull, fingerprint); err != nil {
+			return kindObservation{}, err
+		}
+		if consolidate {
+			if err := closeOlderFileProposals(ctx, client, target, *branch.Pull); err != nil {
+				return kindObservation{}, err
+			}
+		}
+		return kindObservation{state: orgsync.ObservationProposed, proposalURL: branch.Pull.URL}, nil
+	}
 	changed, err := commitFiles(ctx, client, target, proposal, branch, files)
 	if err != nil {
 		return kindObservation{}, err
@@ -302,6 +330,11 @@ func proposeFiles(
 	pull, err := openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files)
 	if err != nil {
 		return kindObservation{}, err
+	}
+	if consolidate {
+		if err := closeOlderFileProposals(ctx, client, target, pull); err != nil {
+			return kindObservation{}, err
+		}
 	}
 	return kindObservation{state: orgsync.ObservationProposed, proposalURL: pull.URL}, nil
 }
@@ -574,6 +607,11 @@ func openOrUpdateProposal(
 	files []plannedFile,
 ) (github.PullRequest, error) {
 	body := fileProposalBody(files)
+	fingerprint := proposal
+	if len(files) > 0 && files[0].fingerprint != "" {
+		fingerprint = files[0].fingerprint
+	}
+	body += "\n" + proposalMarker + fingerprint + " -->\n"
 
 	if pull != nil {
 		// Kept current rather than left as it was written. A proposal sits
@@ -609,10 +647,8 @@ func openOrUpdateProposal(
 
 // fileProposalBody says what the proposal does, and what closing it means.
 //
-// What closing it means, because that is the only way to refuse: the branch is
-// named after what the files should end up saying, so a closed pull request
-// stops this asking again - and a configuration that changes is a different
-// branch, which asks once more.
+// The body marker records the current configuration even when an open PR
+// keeps its original branch name. Closing it refuses that configuration.
 func fileProposalBody(files []plannedFile) string {
 	var body strings.Builder
 

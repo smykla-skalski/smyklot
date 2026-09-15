@@ -13,7 +13,7 @@ import (
 func (c *Client) FindOpenPullRequestByHead(ctx context.Context, owner, repository, branch string) (*PullRequest, error) {
 	path := fmt.Sprintf("/repos/%s/%s/pulls?head=%s:%s&state=open", owner, repository, owner, branch)
 	pulls, _, err := c.gh.PullRequests.List(ctx, owner, repository, &gogithub.PullRequestListOptions{
-		State: PullRequestOpen, Head: owner + ":" + branch, Sort: "created", Direction: "desc",
+		State: PullRequestOpen, Head: owner + ":" + branch, Sort: pullSortCreated, Direction: "desc",
 		ListOptions: gogithub.ListOptions{PerPage: 1},
 	})
 	if err != nil {
