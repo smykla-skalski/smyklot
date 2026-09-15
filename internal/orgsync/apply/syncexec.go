@@ -581,12 +581,13 @@ func (s *Engine) installationClient(installationID string) (*github.Client, erro
 		return nil, fmt.Errorf("%w: installation id %q", bot.ErrGitHubClient, installationID)
 	}
 
-	token, err := s.tokens.InstallationToken(id)
-	if err != nil {
-		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
-	}
-
-	client, err := github.NewClient(token, s.apiBaseURL)
+	client, err := github.NewRefreshingClient(func() (string, error) {
+		token, err := s.tokens.InstallationToken(id)
+		if err != nil {
+			return "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
+		}
+		return token, nil
+	}, s.apiBaseURL)
 	if err != nil {
 		return nil, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}

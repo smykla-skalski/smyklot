@@ -14,15 +14,38 @@ import (
 // one. Carrying the scheme keeps newClient and NewAppClient meaningfully
 // different rather than incidentally so.
 type authTransport struct {
-	base   http.RoundTripper
-	scheme string
-	token  string
+	base    http.RoundTripper
+	scheme  string
+	token   string
+	refresh func() (string, error)
 }
 
 // RoundTrip clones the request before touching its headers. A RoundTripper must
 // not modify the request it is given: the caller may still be holding it, and
 // retry logic above may send it again.
 func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// When authentication fails before handing off to the HTTP transport,
+	// this layer still owns closing the request body.
+	sent := false
+	defer func() {
+		if !sent && req.Body != nil {
+			_ = req.Body.Close()
+		}
+	}()
+	if err := req.Context().Err(); err != nil {
+		return nil, err
+	}
+	token := t.token
+	if t.refresh != nil {
+		var err error
+		token, err = t.refresh()
+		if err != nil {
+			return nil, err
+		}
+		if token == "" {
+			return nil, ErrEmptyToken
+		}
+	}
 	clone := req.Clone(req.Context())
 
 	scheme := t.scheme
@@ -30,7 +53,7 @@ func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		scheme = schemeToken
 	}
 
-	clone.Header.Set("Authorization", scheme+" "+t.token)
+	clone.Header.Set("Authorization", scheme+" "+token)
 	clone.Header.Set("User-Agent", userAgent)
 
 	base := t.base
@@ -38,5 +61,6 @@ func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		base = http.DefaultTransport
 	}
 
+	sent = true
 	return base.RoundTrip(clone)
 }

@@ -87,7 +87,24 @@ func NewAppClient(jwt, baseURL string) (*Client, error) {
 	return newClient(jwt, baseURL, schemeBearer)
 }
 
+// NewRefreshingClient retrieves current credentials before every HTTP attempt.
+// token must be safe for concurrent use and should cache unexpired credentials.
+func NewRefreshingClient(token func() (string, error), baseURL string) (*Client, error) {
+	if token == nil {
+		return nil, ErrEmptyToken
+	}
+	initial, err := token()
+	if err != nil {
+		return nil, err
+	}
+	return clientWithCredentials(initial, baseURL, schemeToken, token)
+}
+
 func newClient(token, baseURL, authScheme string) (*Client, error) {
+	return clientWithCredentials(token, baseURL, authScheme, nil)
+}
+
+func clientWithCredentials(token, baseURL, authScheme string, refresh func() (string, error)) (*Client, error) {
 	if token == "" {
 		return nil, ErrEmptyToken
 	}
@@ -104,12 +121,12 @@ func newClient(token, baseURL, authScheme string) (*Client, error) {
 	// inside the transport. The deadline is applied per attempt instead, in
 	// retryTransport.attempt.
 	httpClient := &http.Client{
-		Transport: authTransport{
-			base: retryTransport{base: sharedTransport},
-
-			scheme: authScheme,
-			token:  token,
-		},
+		Transport: retryTransport{base: authTransport{
+			base:    sharedTransport,
+			scheme:  authScheme,
+			token:   token,
+			refresh: refresh,
+		}},
 	}
 
 	gh, err := newGoGitHub(httpClient, baseURL)
