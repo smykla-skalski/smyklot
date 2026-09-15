@@ -696,6 +696,18 @@ Current test coverage: 130+ tests passing
 - 30 feedback system tests
 - 18+ GitHub client tests
 
+### CI timing
+
+SQLite conformance runs in three duration-balanced shards, with race detection in each. Storage helpers and migrations run once in `go (storage)`. PostgreSQL storage keeps its separate engine pass. Each shard discovers the current specs and proves that every assigned spec passed. New specs receive the median timing weight automatically.
+
+Run one shard with `mise run test:storage:shard 1`, or the migration and helper tests with `mise run test:storage:support`. `mise run test:storage` still runs the complete local storage suite. The matrix guard rejects missing or repeated shard numbers.
+
+CI uploads `sqlite-N-timings` artifacts. To rebalance, download all three `results.json` reports into separate directories, then run `mise run test:storage:rebalance <report-1> <report-2> <report-3>`. This rejects incomplete or repeated coverage. Alternatively, run `mise run test:storage:profile` followed by `mise run test:storage:rebalance tmp/storage/profile.json`. Commit the updated `scripts/storage-spec-times.json` with the change. Initial weights come from a local race-enabled profile of all 362 specs on September 15, 2026. Prefer CI timings for subsequent updates because runner performance differs.
+
+Service conformance uses two shards per engine: `mise run test:service:shard sqlite 1` or `mise run test:service:shard postgres 1`. PostgreSQL requires `SMYKLOT_TEST_POSTGRES_DSN`; SQLite refuses that variable to prevent accidentally testing the wrong engine. Shard 1 also runs ordinary service tests once. The partition reserves 22% of the total conformance weight on that shard, based on CI's measured support-test cost of 60-81s against 275-386s of conformance. Rebalance from a full `mise run test:service:profile` report or both CI reports for one engine with `mise run test:service:rebalance <reports...>`.
+
+The workflow stays at 20 jobs. Seven browser groups use all 40 existing CI files, balanced to 303-309s using run 34938622154. Shorter lint and frontend checks share a runner. Configuration sync runs alongside storage support; the remaining package suites share the panel runner. These choices leave runner slots for the longest tests. `mise run lint:matrix` enforces coverage after regrouping.
+
 ## Contributing
 
 1. Fork the repository

@@ -67,6 +67,52 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:service:shard"]
+description = "Run a balanced service shard and ordinary tests once per engine"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = 'node scripts/service-shards.mjs {{arg(name="engine")}} {{arg(name="shard")}}'
+
+[tasks."test:ci:support"]
+description = "Run storage helpers and configuration sync in the shorter CI lane"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = 'go test -race -count=1 -skip=^TestSQLite$ ./internal/storage/... ./internal/configsync/...'
+
+[tasks."test:service:rebalance"]
+description = "Update service weights from a complete profile or both engine shard reports"
+run = 'node scripts/service-shards.mjs --update-timings {{arg(name="reports", var=true)}}'
+
+[tasks."test:service:profile"]
+description = "Measure service spec durations with race detection"
+depends = ["panel:assets:generate"]
+env = { CGO_ENABLED = "1" }
+run = "ginkgo -p --race --fail-on-empty --json-report=tmp/service-profile.json ./cmd/smyklot -- -test.run=^TestMain$"
+
+[tasks."test:storage:support"]
+description = "Run storage helpers and migrations once, excluding the sharded SQLite bootstrap"
+env = { CGO_ENABLED = "1" }
+run = 'go test -race -count=1 -skip=^TestSQLite$ ./internal/storage/...'
+
+[tasks."test:storage:shard"]
+description = "Run one balanced SQLite conformance shard with race detection"
+env = { CGO_ENABLED = "1" }
+run = 'node scripts/storage-shards.mjs {{arg(name="shard")}}'
+
+[tasks."test:storage:partition"]
+description = "Check storage shard coverage and balancing guards"
+run = "node --test scripts/storage-shards.test.mjs"
+
+[tasks."test:storage:rebalance"]
+description = "Update shard weights from a full profile or all CI shard reports"
+run = 'node scripts/storage-shards.mjs --update-timings {{arg(name="reports", var=true)}}'
+
+# Keep an unfiltered timing report for rebalancing the distributed SQLite specs.
+[tasks."test:storage:profile"]
+description = "Measure SQLite spec durations with race detection"
+env = { CGO_ENABLED = "1" }
+run = "ginkgo -p --race --fail-on-empty --json-report=tmp/storage/profile.json ./internal/storage/sqlite -- -test.run=^TestSQLite$"
+
 [tasks."test:storage:sync-requests"]
 description = "Check accepted sync request reads on SQLite and PostgreSQL"
 env = { CGO_ENABLED = "1" }
@@ -421,6 +467,12 @@ sources = [
 ]
 outputs = ["dist/**/*"]
 run = "npm run build"
+
+[tasks."panel:frontend:quality"]
+description = "Run frontend lint and unit tests in one CI lane"
+depends = ["panel:frontend:install", "panel:dev:render-bridge"]
+dir = "internal/panel/frontend"
+run = "npm run lint && npm test"
 
 [tasks."panel:frontend:lint"]
 description = "Lint, format-check, and type-check the panel frontend"
