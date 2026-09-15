@@ -99,7 +99,8 @@ jobs:
       - name: Install the toolchain
         uses: ./.github/actions/toolchain
         with:
-          go-cache: sqlite-${{ matrix.shard }}
+          # Each shard compiles the same package. Reuse the warm storage cache.
+          go-cache: storage
       - name: Run the suite
         run: mise run test:storage:shard ${{ matrix.shard }}
       - name: Save SQLite timing reports
