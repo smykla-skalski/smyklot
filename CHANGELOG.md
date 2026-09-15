@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.55.6](https://github.com/smykla-skalski/smyklot/compare/v1.55.5...v1.55.6) (2026-09-15)
+
+### Bug Fixes
+
+* **sync:** refresh credentials during execution ([#396](https://github.com/smykla-skalski/smyklot/issues/396)) ([91a495b](https://github.com/smykla-skalski/smyklot/commit/91a495bc69f49f5747eb15d23bdaa00718239df0))
+
+### Performance Improvements
+
+* **ci:** balance test runners across the workflow ([#397](https://github.com/smykla-skalski/smyklot/issues/397)) ([83a3924](https://github.com/smykla-skalski/smyklot/commit/83a39246bb6062edb649037cec2312304b6e0c99))
+
 ## [1.55.5](https://github.com/smykla-skalski/smyklot/compare/v1.55.4...v1.55.5) (2026-09-15)
 
 ### Bug Fixes
