@@ -77,6 +77,15 @@ type ResolvedFile struct {
 	// and re-deriving it at apply time would derive it from a configuration
 	// that may have moved.
 	Proposal string `json:"proposal"`
+
+	// Fingerprint identifies the desired configuration when an older open
+	// proposal branch is reused. Closing that PR declines this configuration.
+	Fingerprint string `json:"fingerprint,omitempty"`
+
+	// Consolidate closes older open sync proposals after this one is ready.
+	Consolidate bool `json:"consolidate,omitempty"`
+	// ProposalOnly reconciles duplicate PRs without changing file contents.
+	ProposalOnly bool `json:"proposal_only,omitempty"`
 }
 
 // desiredFile is a resolved file with the name git would give its contents.
