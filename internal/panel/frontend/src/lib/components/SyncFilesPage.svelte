@@ -106,7 +106,7 @@ already hold - the index ships once, matching costs no requests.
           '.golangci.yml',
           '.github/workflows/ci.yml',
           '.github/workflows/publish.yml',
-          'mise.toml',
+          'mise/conf.d/00-shared.toml',
         ],
       },
       null,
