@@ -20,6 +20,7 @@ already hold - the index ships once, matching costs no requests.
     SyncStatus,
   } from '../types';
 
+  import Button from './Button.svelte';
   import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
@@ -367,9 +368,7 @@ already hold - the index ships once, matching costs no requests.
     <div class="card-head">
       <h2 class="card-title">Git-backed templates</h2>
       {#if !frozen && !editingCatalog}
-        <button type="button" class="btn" onclick={editCatalog}>
-          {catalog ? 'Edit source' : 'Connect catalog'}
-        </button>
+        <Button onclick={editCatalog}>{catalog ? 'Edit source' : 'Connect catalog'}</Button>
       {/if}
     </div>
     {#if editingCatalog}
