@@ -98,6 +98,7 @@ already hold - the index ships once, matching costs no requests.
         commit: '',
         path: 'sync/catalog.json',
         profiles: ['base', 'typescript', 'opencode-plugin'],
+        default_profiles: ['base'],
         paths: [],
       },
       null,

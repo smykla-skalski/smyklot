@@ -145,6 +145,11 @@
     });
   });
   let excludes = $derived<string[]>(storedList<string>(controlledEnvelope.document, 'excludes'));
+  let selectedProfiles = $derived<string[] | null>(
+    Array.isArray((controlledEnvelope.document as Record<string, unknown>).profiles)
+      ? ((controlledEnvelope.document as Record<string, unknown>).profiles as string[])
+      : null,
+  );
   let wanted = $derived<boolean | null>(controlledEnvelope.enabled);
 
   const disabled = $derived(readOnly || stored.unreadable);
@@ -280,6 +285,12 @@
       document.excludes = excludes;
     } else {
       delete document.excludes;
+    }
+
+    if (selectedProfiles === null) {
+      delete document.profiles;
+    } else {
+      document.profiles = selectedProfiles;
     }
 
     return document;
@@ -787,6 +798,54 @@ customization it described.
         >
           <Icon name="close" size="micro" />
         </button>
+      {/if}
+    </div>
+    <div
+      class={['policy-row', { 'is-unsaved': dirtyDocument }]}
+      data-unsaved={dirtyDocument || undefined}
+    >
+      <span class="setting-say">
+        <span class="setting-name">Catalog profiles</span>
+        <span class="setting-why">Choose shared profiles for this repository</span>
+      </span>
+      {#if selectedProfiles === null}
+        <span class="policy-value">
+          <span class="setting-unmanaged">From the workspace</span>
+          <Button
+            tone="add"
+            {disabled}
+            onclick={() => {
+              selectedProfiles = [];
+              stageDocument();
+            }}>Override</Button
+          >
+        </span>
+      {:else}
+        <span class="policy-value">
+          <input
+            class="text-input"
+            aria-label="Catalog profiles for this repository"
+            placeholder="base, typescript"
+            value={selectedProfiles.join(', ')}
+            {disabled}
+            oninput={(event) => {
+              selectedProfiles = event.currentTarget.value
+                .split(',')
+                .map((name) => name.trim())
+                .filter(Boolean);
+              stageDocument();
+            }}
+          />
+          <button
+            class="setting-clear"
+            title="Restore workspace profiles"
+            {disabled}
+            onclick={() => {
+              selectedProfiles = null;
+              stageDocument();
+            }}><Icon name="close" size="micro" /></button
+          >
+        </span>
       {/if}
     </div>
     <div

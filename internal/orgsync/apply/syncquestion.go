@@ -195,6 +195,8 @@ func filePlanner(
 			}
 			resolved.Files = append(resolved.Files, imported.Files...)
 			resolved.Catalog = nil
+			resolved.CatalogProfiles = files.Catalog.Profiles
+			resolved.DefaultProfiles = files.Catalog.DefaultProfiles
 			resolveErr = resolved.Validate()
 		})
 		if resolveErr != nil {
@@ -242,6 +244,11 @@ func planRepositoryFiles(
 
 	adjustments, err := decodeFileOverride(override, config)
 	if err != nil {
+		return repositoryAnswer{problem: "the adjustments saved for this repository cannot be used: " +
+			err.Error()}, nil
+	}
+	config = config.SelectProfiles(adjustments.Profiles)
+	if err := adjustments.Validate(config); err != nil {
 		return repositoryAnswer{problem: "the adjustments saved for this repository cannot be used: " +
 			err.Error()}, nil
 	}

@@ -36,3 +36,29 @@ func TestCatalogPathsRequireWorkflowPermission(t *testing.T) {
 		t.Fatalf("unavailable = %#v, missing = %t", unavailable, missing)
 	}
 }
+
+func TestCatalogProfilesSelectRepositoryFiles(t *testing.T) {
+	config := orgsync.FileConfig{
+		Files: []orgsync.File{
+			{Path: "inline.md"},
+			{Path: "base.md", Profile: "base"},
+			{Path: "ts.json", Profile: "typescript"},
+		},
+		CatalogProfiles: []string{"base", "typescript"},
+		DefaultProfiles: []string{"base"},
+	}
+	if got := config.SelectProfiles(nil).Paths(); !slices.Equal(got, []string{"inline.md", "base.md"}) {
+		t.Fatalf("default paths = %v", got)
+	}
+	selected := []string{"base", "typescript"}
+	if got := config.SelectProfiles(&selected).Paths(); !slices.Equal(got, []string{"inline.md", "base.md", "ts.json"}) {
+		t.Fatalf("selected paths = %v", got)
+	}
+	empty := []string{}
+	if got := config.SelectProfiles(&empty).Paths(); !slices.Equal(got, []string{"inline.md"}) {
+		t.Fatalf("empty selection paths = %v", got)
+	}
+	if err := (orgsync.FileOverride{Profiles: &[]string{"unknown"}}).Validate(config); err == nil {
+		t.Fatal("unknown repository profile was accepted")
+	}
+}

@@ -96,7 +96,7 @@ func readProfile(
 		if err != nil {
 			return nil, fmt.Errorf("profile %q file %q: %w", name, entry.Source, err)
 		}
-		files = append(files, orgsync.File{Path: entry.Path, Content: string(content)})
+		files = append(files, orgsync.File{Path: entry.Path, Content: string(content), Profile: name})
 	}
 	return files, nil
 }

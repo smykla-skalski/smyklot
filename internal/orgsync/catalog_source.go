@@ -14,12 +14,13 @@ var (
 
 // CatalogSource identifies a versioned catalog and the paths it may write.
 type CatalogSource struct {
-	Owner    string   `json:"owner"`
-	Repo     string   `json:"repo"`
-	Commit   string   `json:"commit"`
-	Path     string   `json:"path"`
-	Profiles []string `json:"profiles"`
-	Paths    []string `json:"paths"`
+	Owner           string   `json:"owner"`
+	Repo            string   `json:"repo"`
+	Commit          string   `json:"commit"`
+	Path            string   `json:"path"`
+	Profiles        []string `json:"profiles"`
+	DefaultProfiles []string `json:"default_profiles,omitempty"`
+	Paths           []string `json:"paths"`
 }
 
 func (source CatalogSource) Validate() error {
@@ -39,6 +40,11 @@ func (source CatalogSource) Validate() error {
 	for index, name := range source.Profiles {
 		if !profileName.MatchString(name) || slices.Contains(source.Profiles[:index], name) {
 			return invalid("catalog profile %q is invalid or selected twice", name)
+		}
+	}
+	for index, name := range source.DefaultProfiles {
+		if !slices.Contains(source.Profiles, name) || slices.Contains(source.DefaultProfiles[:index], name) {
+			return invalid("catalog default profile %q is unavailable or selected twice", name)
 		}
 	}
 	return nil
