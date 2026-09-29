@@ -69,11 +69,56 @@ already hold - the index ships once, matching costs no requests.
   const frozen = $derived(readOnly || unreadable || config === null);
 
   const files = $derived(Array.isArray(stored.files) ? (stored.files as SyncFile[]) : []);
+  const catalog = $derived(
+    stored.catalog && typeof stored.catalog === 'object'
+      ? (stored.catalog as {
+          owner: string;
+          repo: string;
+          commit: string;
+          path: string;
+          profiles: string[];
+          paths: string[];
+        })
+      : null,
+  );
   const retired = $derived(Array.isArray(stored.retired) ? (stored.retired as string[]) : []);
   const excludes = $derived(Array.isArray(stored.excludes) ? (stored.excludes as string[]) : []);
   const savedFiles = $derived(
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
+  let editingCatalog = $state(false);
+  let catalogDraft = $state('');
+  let catalogError = $state('');
+
+  function editCatalog(): void {
+    catalogDraft = JSON.stringify(
+      catalog ?? {
+        owner: 'smykla-skalski',
+        repo: '.github',
+        commit: '',
+        path: 'sync/catalog.json',
+        profiles: ['base', 'typescript', 'opencode-plugin'],
+        paths: [],
+      },
+      null,
+      2,
+    );
+    catalogError = '';
+    editingCatalog = true;
+  }
+
+  function saveCatalog(): void {
+    try {
+      const parsed: unknown = JSON.parse(catalogDraft);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        catalogError = 'The catalog source must be a JSON object';
+        return;
+      }
+      if (stage({ catalog: parsed })) editingCatalog = false;
+    } catch {
+      catalogError = 'Enter valid JSON for the catalog source';
+    }
+  }
 
   function stage(change: Partial<Record<string, unknown>>): boolean {
     if (frozen) return false;
@@ -317,9 +362,77 @@ already hold - the index ships once, matching costs no requests.
     </Popover>
   {/snippet}
 
+  <Card>
+    <div class="card-head">
+      <h2 class="card-title">Git-backed templates</h2>
+      {#if !frozen && !editingCatalog}
+        <button type="button" class="btn" onclick={editCatalog}>
+          {catalog ? 'Edit source' : 'Connect catalog'}
+        </button>
+      {/if}
+    </div>
+    {#if editingCatalog}
+      <div class="form-field">
+        <label class="form-label" for="sync-file-catalog">Catalog source</label>
+        <textarea
+          class="text-input mono"
+          id="sync-file-catalog"
+          rows="12"
+          bind:value={catalogDraft}
+          spellcheck="false"></textarea>
+        <p class="form-help">
+          Pin a full commit SHA. Paths must match the selected catalog profiles.
+        </p>
+        {#if catalogError !== ''}
+          <FormError message={catalogError} />
+        {/if}
+        <div class="card-head">
+          <button type="button" class="btn" onclick={saveCatalog}>Use source</button>
+          <button type="button" class="btn" onclick={() => (editingCatalog = false)}>Cancel</button>
+          {#if catalog}
+            <button
+              type="button"
+              class="btn"
+              onclick={() => {
+                if (stage({ catalog: null })) editingCatalog = false;
+              }}>Disconnect</button
+            >
+          {/if}
+        </div>
+      </div>
+    {/if}
+    {#if catalog}
+      <p>
+        Source:
+        <a
+          href={'https://github.com/' +
+            catalog.owner +
+            '/' +
+            catalog.repo +
+            '/blob/' +
+            catalog.commit +
+            '/' +
+            catalog.path}
+          target="_blank"
+          rel="noopener noreferrer">{catalog.owner}/{catalog.repo}@{catalog.commit.slice(0, 12)}</a
+        >
+      </p>
+      <p>Profiles: {catalog.profiles.join(', ')}</p>
+      <ul class="object-list">
+        {#each catalog.paths as path (path)}
+          <li class="object-row"><span class="file-path">{path}</span></li>
+        {/each}
+      </ul>
+    {:else if !editingCatalog}
+      <p>No Git catalog connected.</p>
+    {/if}
+  </Card>
+
   <Card unsaved={dirtyDocument}>
     <div class="card-head">
-      <h2 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h2>
+      <h2 class="card-title">
+        {files.length} inline {files.length === 1 ? 'template' : 'templates'}
+      </h2>
     </div>
 
     {#if files.length > 0}
@@ -361,7 +474,7 @@ already hold - the index ships once, matching costs no requests.
           </li>
         {/each}
       </ul>
-    {:else if !unreadable}
+    {:else if !unreadable && !catalog}
       <div class="state-panel">
         <span
           ><strong>No shared files yet</strong> Add a template to propose shared-file updates through

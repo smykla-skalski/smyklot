@@ -33,7 +33,8 @@ type File struct {
 
 // FileConfig is the files an installation expects its repositories to carry.
 type FileConfig struct {
-	Files []File `json:"files"`
+	Files   []File         `json:"files"`
+	Catalog *CatalogSource `json:"catalog,omitempty"`
 
 	// Retired are paths this organization used to install and now removes.
 	//
@@ -188,6 +189,19 @@ func (c FileConfig) Validate() error {
 		total += len(file.Content)
 		if total > largestFileTotal {
 			return invalid("the files come to more than %d bytes together", largestFileTotal)
+		}
+	}
+	if c.Catalog != nil {
+		if err := c.Catalog.Validate(); err != nil {
+			return err
+		}
+		for index, filePath := range c.Catalog.Paths {
+			if err := validateFilePath("catalog file", index, filePath); err != nil {
+				return err
+			}
+			if earlier, clashed := seen.clash(filePath); clashed {
+				return invalid("catalog file %q conflicts with %q", filePath, earlier)
+			}
 		}
 	}
 
@@ -393,6 +407,9 @@ func (c FileConfig) Paths() []string {
 	for _, file := range c.Files {
 		paths = append(paths, file.Path)
 	}
+	if c.Catalog != nil {
+		paths = append(paths, c.Catalog.Paths...)
+	}
 
 	return paths
 }
@@ -451,6 +468,9 @@ func decodeFilePaths(document []byte) (FileConfig, error) {
 		} `json:"files"`
 		Retired  []string `json:"retired"`
 		Excludes []string `json:"excludes"`
+		Catalog  *struct {
+			Paths []string `json:"paths"`
+		} `json:"catalog"`
 	}
 
 	if err := json.Unmarshal(document, &named); err != nil {
@@ -460,6 +480,9 @@ func decodeFilePaths(document []byte) (FileConfig, error) {
 	config := FileConfig{Retired: named.Retired, Excludes: named.Excludes}
 	for _, file := range named.Files {
 		config.Files = append(config.Files, File{Path: file.Path})
+	}
+	if named.Catalog != nil {
+		config.Catalog = &CatalogSource{Paths: named.Catalog.Paths}
 	}
 
 	return config, nil
