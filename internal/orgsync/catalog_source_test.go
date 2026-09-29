@@ -62,3 +62,21 @@ func TestCatalogProfilesSelectRepositoryFiles(t *testing.T) {
 		t.Fatal("unknown repository profile was accepted")
 	}
 }
+
+func TestCatalogProfilesRefuseConflictingRepositorySelection(t *testing.T) {
+	config := orgsync.FileConfig{
+		Files: []orgsync.File{
+			{Path: "mise.toml", Content: "[tools]\ngo = \"1.27.1\"\n", Profile: "go"},
+			{Path: "mise.toml", Content: "[tools]\nnode = \"24.21.0\"\n", Profile: "opencode-plugin"},
+		},
+		CatalogProfiles: []string{"go", "opencode-plugin"},
+		DefaultProfiles: []string{"go"},
+	}
+	if err := config.SelectProfiles(nil).Validate(); err != nil {
+		t.Fatalf("default profile should be valid: %v", err)
+	}
+	selected := []string{"go", "opencode-plugin"}
+	if err := config.SelectProfiles(&selected).Validate(); err == nil {
+		t.Fatal("conflicting repository profiles were accepted")
+	}
+}

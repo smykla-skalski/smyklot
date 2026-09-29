@@ -197,7 +197,6 @@ func filePlanner(
 			resolved.Catalog = nil
 			resolved.CatalogProfiles = files.Catalog.Profiles
 			resolved.DefaultProfiles = files.Catalog.DefaultProfiles
-			resolveErr = resolved.Validate()
 		})
 		if resolveErr != nil {
 			return repositoryAnswer{}, fmt.Errorf("resolve shared-file catalog: %w", resolveErr)
@@ -248,6 +247,10 @@ func planRepositoryFiles(
 			err.Error()}, nil
 	}
 	config = config.SelectProfiles(adjustments.Profiles)
+	if err := config.Validate(); err != nil {
+		return repositoryAnswer{problem: "the selected catalog profiles cannot be used together: " +
+			err.Error()}, nil
+	}
 	if err := adjustments.Validate(config); err != nil {
 		return repositoryAnswer{problem: "the adjustments saved for this repository cannot be used: " +
 			err.Error()}, nil

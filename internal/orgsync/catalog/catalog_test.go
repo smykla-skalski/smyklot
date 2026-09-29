@@ -61,9 +61,9 @@ func TestResolveRefusesMissingAndConflictingFiles(t *testing.T) {
 			wantErr: "is missing",
 		},
 		{
-			name: "duplicate target",
+			name: "duplicate target in one profile",
 			files: reader{
-				"sync/catalog.json": `{"version":1,"profiles":{"base":{"files":[{"source":"sync/one.md","path":"README.md"}]},"typescript":{"files":[{"source":"sync/two.md","path":"README.md"}]}}}`,
+				"sync/catalog.json": `{"version":1,"profiles":{"base":{"files":[{"source":"sync/one.md","path":"README.md"},{"source":"sync/two.md","path":"README.md"}]},"typescript":{"files":[]}}}`,
 				"sync/one.md":       "one", "sync/two.md": "two",
 			},
 			wantErr: "configured twice",
@@ -81,6 +81,23 @@ func TestResolveRefusesMissingAndConflictingFiles(t *testing.T) {
 				t.Fatalf("error = %v, wanted %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestResolveAllowsSharedTargetInSeparateProfiles(t *testing.T) {
+	selected := source()
+	selected.Paths = []string{"mise.toml"}
+	files := reader{
+		"sync/catalog.json": `{"version":1,"profiles":{"base":{"files":[{"source":"sync/go.toml","path":"mise.toml"}]},"typescript":{"files":[{"source":"sync/ts.toml","path":"mise.toml"}]}}}`,
+		"sync/go.toml":      "[tools]\ngo = \"1.27.1\"\n",
+		"sync/ts.toml":      "[tools]\nnode = \"24.21.0\"\n",
+	}
+	resolved, err := catalog.Resolve(context.Background(), files, selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.Files) != 2 {
+		t.Fatalf("resolved files = %#v", resolved.Files)
 	}
 }
 

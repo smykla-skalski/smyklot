@@ -68,12 +68,12 @@ func Resolve(ctx context.Context, reader Reader, source Source) (orgsync.FileCon
 		if err != nil {
 			return orgsync.FileConfig{}, err
 		}
+		if err := (orgsync.FileConfig{Files: imported}).Validate(); err != nil {
+			return orgsync.FileConfig{}, fmt.Errorf("profile %q: %w", name, err)
+		}
 		files.Files = append(files.Files, imported...)
 	}
-	if err := files.Validate(); err != nil {
-		return orgsync.FileConfig{}, err
-	}
-	actual := slices.Sorted(slices.Values(files.Paths()))
+	actual := slices.Compact(slices.Sorted(slices.Values(files.Paths())))
 	expected := slices.Sorted(slices.Values(source.Paths))
 	if !slices.Equal(actual, expected) {
 		return orgsync.FileConfig{}, fmt.Errorf("catalog paths differ from configured paths")
