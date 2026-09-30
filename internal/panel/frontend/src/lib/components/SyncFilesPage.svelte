@@ -10,6 +10,7 @@ already hold - the index ships once, matching costs no requests.
   import { Command } from 'bits-ui';
 
   import { rankPaths, type PathMatch } from '../pathfinder';
+  import { formattingOverrideCount } from '../formatting';
   import { receipts } from '../receipts.svelte';
   import type {
     SyncConfig,
@@ -20,6 +21,7 @@ already hold - the index ships once, matching costs no requests.
     SyncStatus,
   } from '../types';
 
+  import Button from './Button.svelte';
   import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
@@ -69,15 +71,118 @@ already hold - the index ships once, matching costs no requests.
   const frozen = $derived(readOnly || unreadable || config === null);
 
   const files = $derived(Array.isArray(stored.files) ? (stored.files as SyncFile[]) : []);
+  const catalog = $derived(
+    stored.catalog && typeof stored.catalog === 'object'
+      ? (stored.catalog as {
+          owner: string;
+          repo: string;
+          commit: string;
+          path: string;
+          profiles: string[];
+          required_profiles?: string[];
+          required_paths?: string[];
+          paths: string[];
+        })
+      : null,
+  );
   const retired = $derived(Array.isArray(stored.retired) ? (stored.retired as string[]) : []);
   const excludes = $derived(Array.isArray(stored.excludes) ? (stored.excludes as string[]) : []);
   const savedFiles = $derived(
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
+  const requiredCatalogPaths = $derived(
+    catalog &&
+      /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(catalog.commit) &&
+      Array.isArray(catalog.required_profiles) &&
+      catalog.required_profiles.length > 0 &&
+      Array.isArray(catalog.required_paths)
+      ? catalog.required_paths.filter((path) => catalog.paths.includes(path))
+      : [],
+  );
+  const overlappingFiles = $derived(
+    files.filter((file) => requiredCatalogPaths.includes(file.path)),
+  );
+  const movableFiles = $derived(
+    overlappingFiles.filter((file) => formattingOverrideCount(file.formatting ?? {}) === 0),
+  );
+  const blockedFiles = $derived(overlappingFiles.length - movableFiles.length);
+  let editingCatalog = $state(false);
+  let catalogDraft = $state('');
+  let catalogError = $state('');
+
+  function editCatalog(): void {
+    catalogDraft = JSON.stringify(
+      catalog ?? {
+        owner: 'smykla-skalski',
+        repo: '.github',
+        commit: '',
+        path: 'sync/catalog.json',
+        profiles: ['base', 'typescript', 'go', 'opencode-plugin'],
+        default_profiles: ['base'],
+        required_profiles: ['base'],
+        required_paths: [
+          'CODE_OF_CONDUCT.md',
+          'CONTRIBUTING.md',
+          'LICENSE',
+          'SECURITY.md',
+          'renovate.json',
+          '.github/PULL_REQUEST_TEMPLATE.md',
+          '.github/ISSUE_TEMPLATE/bug_report.yml',
+          '.github/ISSUE_TEMPLATE/config.yml',
+        ],
+        paths: [
+          '.markdownlint-cli2.jsonc',
+          'CODE_OF_CONDUCT.md',
+          'CONTRIBUTING.md',
+          'LICENSE',
+          'SECURITY.md',
+          'renovate.json',
+          '.github/PULL_REQUEST_TEMPLATE.md',
+          '.github/ISSUE_TEMPLATE/bug_report.yml',
+          '.github/ISSUE_TEMPLATE/config.yml',
+          '.oxlintrc.json',
+          '.golangci.yml',
+          '.github/workflows/ci.yml',
+          '.github/workflows/publish.yml',
+          'mise/conf.d/00-shared.toml',
+        ],
+      },
+      null,
+      2,
+    );
+    catalogError = '';
+    editingCatalog = true;
+  }
+
+  function saveCatalog(): void {
+    try {
+      const parsed: unknown = JSON.parse(catalogDraft);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        catalogError = 'The catalog source must be a JSON object';
+        return;
+      }
+      const commit = (parsed as Record<string, unknown>).commit;
+      if (typeof commit !== 'string' || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) {
+        catalogError = 'Enter a full commit SHA for the catalog source';
+        return;
+      }
+      if (stage({ catalog: parsed })) editingCatalog = false;
+    } catch {
+      catalogError = 'Enter valid JSON for the catalog source';
+    }
+  }
 
   function stage(change: Partial<Record<string, unknown>>): boolean {
     if (frozen) return false;
     return onChangeDocument({ ...stored, ...change });
+  }
+
+  function stageCatalogMigration(): void {
+    if (frozen || movableFiles.length === 0) return;
+    const moved = new Set(movableFiles.map((file) => file.path));
+    if (stage({ files: files.filter((file) => !moved.has(file.path)) })) {
+      receipts.say(`${moved.size} inline copies staged for removal. Save with the catalog source.`);
+    }
   }
 
   function same(left: unknown, right: unknown): boolean {
@@ -317,10 +422,99 @@ already hold - the index ships once, matching costs no requests.
     </Popover>
   {/snippet}
 
+  <Card>
+    <div class="card-head">
+      <h2 class="card-title">Git-backed templates</h2>
+      {#if !frozen && !editingCatalog}
+        <Button onclick={editCatalog}>{catalog ? 'Edit source' : 'Connect catalog'}</Button>
+      {/if}
+    </div>
+    {#if editingCatalog}
+      <div class="form-field">
+        <label class="form-label" for="sync-file-catalog">Catalog source</label>
+        <textarea
+          class="text-input mono"
+          id="sync-file-catalog"
+          rows="12"
+          bind:value={catalogDraft}
+          spellcheck="false"></textarea>
+        <p class="form-help">
+          Pin a full commit SHA. Paths must match the selected catalog profiles.
+        </p>
+        {#if catalogError !== ''}
+          <FormError message={catalogError} />
+        {/if}
+        <div class="form-actions">
+          <button type="button" class="btn" onclick={saveCatalog}>Use source</button>
+          <button type="button" class="btn" onclick={() => (editingCatalog = false)}>Cancel</button>
+          {#if catalog}
+            <button
+              type="button"
+              class="btn"
+              onclick={() => {
+                if (stage({ catalog: null })) editingCatalog = false;
+              }}>Disconnect</button
+            >
+          {/if}
+        </div>
+      </div>
+    {/if}
+    {#if catalog}
+      <p>
+        Source:
+        <a
+          href={'https://github.com/' +
+            catalog.owner +
+            '/' +
+            catalog.repo +
+            '/blob/' +
+            catalog.commit +
+            '/' +
+            catalog.path}
+          target="_blank"
+          rel="noopener noreferrer">{catalog.owner}/{catalog.repo}@{catalog.commit.slice(0, 12)}</a
+        >
+      </p>
+      <p>Profiles: {catalog.profiles.join(', ')}</p>
+      <ul class="object-list">
+        {#each catalog.paths as path (path)}
+          <li><div class="object-row"><span class="file-path">{path}</span></div></li>
+        {/each}
+      </ul>
+    {:else if !editingCatalog}
+      <p>No Git catalog connected.</p>
+    {/if}
+  </Card>
+
   <Card unsaved={dirtyDocument}>
     <div class="card-head">
-      <h2 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h2>
+      <h2 class="card-title">
+        {files.length} inline {files.length === 1 ? 'template' : 'templates'}
+      </h2>
     </div>
+
+    {#if overlappingFiles.length > 0}
+      <p>
+        {overlappingFiles.length} inline {overlappingFiles.length === 1
+          ? 'template overlaps'
+          : 'templates overlap'}
+        required catalog files. Stage their removal before saving the catalog source.
+      </p>
+      {#if movableFiles.length > 0}
+        <Button onclick={stageCatalogMigration} disabled={frozen}
+          >Stage removal of {movableFiles.length} inline {movableFiles.length === 1
+            ? 'copy'
+            : 'copies'}</Button
+        >
+      {/if}
+      {#if blockedFiles > 0}
+        <p>
+          {blockedFiles}
+          {blockedFiles === 1 ? 'copy has' : 'copies have'} inline formatting settings. Move those settings
+          before removing the {blockedFiles === 1 ? 'copy' : 'copies'}.
+        </p>
+      {/if}
+    {/if}
 
     {#if files.length > 0}
       <ul class="object-list">
@@ -361,7 +555,7 @@ already hold - the index ships once, matching costs no requests.
           </li>
         {/each}
       </ul>
-    {:else if !unreadable}
+    {:else if !unreadable && !catalog}
       <div class="state-panel">
         <span
           ><strong>No shared files yet</strong> Add a template to propose shared-file updates through

@@ -100,4 +100,58 @@ describe('shared-file draft lifecycle', () => {
     expect(row.textContent).not.toContain('updated');
     expect(row.querySelector('.mx-instep')).toBeNull();
   });
+  it('stages required catalog replacements together and keeps other inline files', async () => {
+    const input = props();
+    const files = [
+      { path: 'CODE_OF_CONDUCT.md', content: '# Code' },
+      { path: 'CONTRIBUTING.md', content: '# Contributing' },
+      { path: 'local.md', content: '# Local' },
+    ];
+    const catalog = {
+      owner: 'smykla-skalski',
+      repo: '.github',
+      commit: 'a'.repeat(40),
+      path: 'sync/catalog.json',
+      profiles: ['base'],
+      required_profiles: ['base'],
+      required_paths: ['CODE_OF_CONDUCT.md', 'CONTRIBUTING.md'],
+      paths: ['CODE_OF_CONDUCT.md', 'CONTRIBUTING.md'],
+    };
+    input.config!.document = { files, catalog };
+    render(SyncFilesPage, { props: input });
+    await fireEvent.click(screen.getByRole('button', { name: 'Stage removal of 2 inline copies' }));
+    expect(input.onChangeDocument).toHaveBeenCalledWith({
+      catalog,
+      files: [{ path: 'local.md', content: '# Local' }],
+    });
+    expect(receipt).toHaveBeenCalledWith(
+      '2 inline copies staged for removal. Save with the catalog source.',
+    );
+  });
+  it('keeps inline files with formatting settings until they are moved', async () => {
+    const input = props();
+    const catalog = {
+      owner: 'smykla-skalski',
+      repo: '.github',
+      commit: 'a'.repeat(40),
+      path: 'sync/catalog.json',
+      profiles: ['base'],
+      required_profiles: ['base'],
+      required_paths: ['CODE_OF_CONDUCT.md', 'CONTRIBUTING.md'],
+      paths: ['CODE_OF_CONDUCT.md', 'CONTRIBUTING.md'],
+    };
+    const formatted = {
+      path: 'CONTRIBUTING.md',
+      content: '# Contributing',
+      formatting: { preset: 'preserve' as const },
+    };
+    input.config!.document = {
+      catalog,
+      files: [{ path: 'CODE_OF_CONDUCT.md', content: '# Code' }, formatted],
+    };
+    render(SyncFilesPage, { props: input });
+    expect(screen.getByText(/1 copy has inline formatting settings/)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Stage removal of 1 inline copy' }));
+    expect(input.onChangeDocument).toHaveBeenCalledWith({ catalog, files: [formatted] });
+  });
 });
