@@ -29,11 +29,15 @@ type File struct {
 
 	// Formatting overrides account defaults for this shared template.
 	Formatting *config.FormattingPatch `json:"formatting,omitempty"`
+	Profile    string                  `json:"-"`
 }
 
 // FileConfig is the files an installation expects its repositories to carry.
 type FileConfig struct {
-	Files []File `json:"files"`
+	Files           []File         `json:"files"`
+	Catalog         *CatalogSource `json:"catalog,omitempty"`
+	CatalogProfiles []string       `json:"-"`
+	DefaultProfiles []string       `json:"-"`
 
 	// Retired are paths this organization used to install and now removes.
 	//
@@ -64,7 +68,8 @@ func (c FileConfig) Exclusions() Excludes { return Excludes{Patterns: c.Excludes
 // they are the panel's, against the repository's own row, so a rename cannot
 // orphan them.
 type FileOverride struct {
-	Merges []FileMerge `json:"merges,omitempty"`
+	Merges   []FileMerge `json:"merges,omitempty"`
+	Profiles *[]string   `json:"profiles,omitempty"`
 
 	// Formats overrides formatting for exact managed repository paths.
 	Formats []FileFormat `json:"formats,omitempty"`
@@ -188,6 +193,19 @@ func (c FileConfig) Validate() error {
 		total += len(file.Content)
 		if total > largestFileTotal {
 			return invalid("the files come to more than %d bytes together", largestFileTotal)
+		}
+	}
+	if c.Catalog != nil {
+		if err := c.Catalog.Validate(); err != nil {
+			return err
+		}
+		for index, filePath := range c.Catalog.Paths {
+			if err := validateFilePath("catalog file", index, filePath); err != nil {
+				return err
+			}
+			if earlier, clashed := seen.clash(filePath); clashed {
+				return invalid("catalog file %q conflicts with %q", filePath, earlier)
+			}
 		}
 	}
 
@@ -393,6 +411,9 @@ func (c FileConfig) Paths() []string {
 	for _, file := range c.Files {
 		paths = append(paths, file.Path)
 	}
+	if c.Catalog != nil {
+		paths = append(paths, c.Catalog.Paths...)
+	}
 
 	return paths
 }
@@ -451,6 +472,9 @@ func decodeFilePaths(document []byte) (FileConfig, error) {
 		} `json:"files"`
 		Retired  []string `json:"retired"`
 		Excludes []string `json:"excludes"`
+		Catalog  *struct {
+			Paths []string `json:"paths"`
+		} `json:"catalog"`
 	}
 
 	if err := json.Unmarshal(document, &named); err != nil {
@@ -460,6 +484,9 @@ func decodeFilePaths(document []byte) (FileConfig, error) {
 	config := FileConfig{Retired: named.Retired, Excludes: named.Excludes}
 	for _, file := range named.Files {
 		config.Files = append(config.Files, File{Path: file.Path})
+	}
+	if named.Catalog != nil {
+		config.Catalog = &CatalogSource{Paths: named.Catalog.Paths}
 	}
 
 	return config, nil
@@ -554,6 +581,9 @@ func (o FileOverride) ValidateAgainst(config FileConfig, keeping []string) error
 	if err := o.Exclusions().Validate(); err != nil {
 		return err
 	}
+	if err := o.validateProfiles(config); err != nil {
+		return err
+	}
 
 	paths := config.Paths()
 	seen := foldedNames{}
@@ -578,6 +608,43 @@ func (o FileOverride) ValidateAgainst(config FileConfig, keeping []string) error
 	}
 
 	return o.validateFormats(paths, keeping)
+}
+
+func (o FileOverride) validateProfiles(config FileConfig) error {
+	available := config.CatalogProfiles
+	if config.Catalog != nil {
+		available = config.Catalog.Profiles
+	}
+	if o.Profiles != nil {
+		if len(available) == 0 {
+			return invalid("repository profiles need a catalog")
+		}
+		for index, name := range *o.Profiles {
+			if !slices.Contains(available, name) || slices.Contains((*o.Profiles)[:index], name) {
+				return invalid("repository profile %q is unavailable or selected twice", name)
+			}
+		}
+	}
+	return nil
+}
+
+// SelectProfiles keeps the catalog files chosen for one repository.
+func (c FileConfig) SelectProfiles(profiles *[]string) FileConfig {
+	selected := c.DefaultProfiles
+	if profiles != nil {
+		selected = *profiles
+	}
+	if profiles == nil && len(selected) == 0 {
+		selected = c.CatalogProfiles
+	}
+	filtered := c
+	filtered.Files = nil
+	for _, file := range c.Files {
+		if file.Profile == "" || slices.Contains(selected, file.Profile) {
+			filtered.Files = append(filtered.Files, file)
+		}
+	}
+	return filtered
 }
 
 func (o FileOverride) validateFormats(paths, keeping []string) error {

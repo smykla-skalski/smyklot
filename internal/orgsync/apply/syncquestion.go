@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/orgsync/catalog"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -172,13 +174,36 @@ func filePlanner(
 	if err != nil {
 		return nil, err
 	}
+	var (
+		resolved   orgsync.FileConfig
+		resolveErr error
+		once       sync.Once
+	)
 
 	return func(
 		ctx context.Context, repository storage.Repository,
 	) (repositoryAnswer, error) {
+		once.Do(func() {
+			resolved = files
+			if files.Catalog == nil {
+				return
+			}
+			var imported orgsync.FileConfig
+			imported, resolveErr = catalog.Resolve(ctx, client, *files.Catalog)
+			if resolveErr != nil {
+				return
+			}
+			resolved.Files = append(resolved.Files, imported.Files...)
+			resolved.Catalog = nil
+			resolved.CatalogProfiles = files.Catalog.Profiles
+			resolved.DefaultProfiles = files.Catalog.DefaultProfiles
+		})
+		if resolveErr != nil {
+			return repositoryAnswer{}, fmt.Errorf("resolve shared-file catalog: %w", resolveErr)
+		}
 		policy := storage.RepositoryFormattingPolicy(formatting, targetPatch, repository)
 		return planRepositoryFiles(
-			ctx, client, repository, files, overrides[repository.ID], policy,
+			ctx, client, repository, resolved, overrides[repository.ID], policy,
 		)
 	}, nil
 }
@@ -218,6 +243,15 @@ func planRepositoryFiles(
 
 	adjustments, err := decodeFileOverride(override, config)
 	if err != nil {
+		return repositoryAnswer{problem: "the adjustments saved for this repository cannot be used: " +
+			err.Error()}, nil
+	}
+	config = config.SelectProfiles(adjustments.Profiles)
+	if err := config.Validate(); err != nil {
+		return repositoryAnswer{problem: "the selected catalog profiles cannot be used together: " +
+			err.Error()}, nil
+	}
+	if err := adjustments.Validate(config); err != nil {
 		return repositoryAnswer{problem: "the adjustments saved for this repository cannot be used: " +
 			err.Error()}, nil
 	}
