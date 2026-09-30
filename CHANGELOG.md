@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.56.0](https://github.com/smykla-skalski/smyklot/compare/v1.55.6...v1.56.0) (2026-09-30)
+
+### Features
+
+* **sync:** load versioned file catalogs ([#413](https://github.com/smykla-skalski/smyklot/issues/413)) ([7334227](https://github.com/smykla-skalski/smyklot/commit/7334227c9e9598a380013aac3556de6445511fe0))
+
 ## [1.55.6](https://github.com/smykla-skalski/smyklot/compare/v1.55.5...v1.55.6) (2026-09-15)
 
 ### Bug Fixes
