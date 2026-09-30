@@ -63,6 +63,26 @@ func TestCatalogProfilesSelectRepositoryFiles(t *testing.T) {
 	}
 }
 
+func TestRequiredProfileSurvivesRepositorySelection(t *testing.T) {
+	config := orgsync.FileConfig{
+		Files: []orgsync.File{
+			{Path: "base.md", Profile: "base"},
+			{Path: "ts.json", Profile: "typescript"},
+		},
+		CatalogProfiles:  []string{"base", "typescript"},
+		DefaultProfiles:  []string{"base"},
+		RequiredProfiles: []string{"base"},
+	}
+	selected := []string{"typescript"}
+	if got := config.SelectProfiles(&selected).Paths(); !slices.Equal(got, []string{"base.md", "ts.json"}) {
+		t.Fatalf("selected paths = %v", got)
+	}
+	empty := []string{}
+	if got := config.SelectProfiles(&empty).Paths(); !slices.Equal(got, []string{"base.md"}) {
+		t.Fatalf("empty selection paths = %v", got)
+	}
+}
+
 func TestCatalogProfilesRefuseConflictingRepositorySelection(t *testing.T) {
 	config := orgsync.FileConfig{
 		Files: []orgsync.File{

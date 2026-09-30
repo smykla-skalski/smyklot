@@ -197,6 +197,7 @@ func filePlanner(
 			resolved.Catalog = nil
 			resolved.CatalogProfiles = files.Catalog.Profiles
 			resolved.DefaultProfiles = files.Catalog.DefaultProfiles
+			resolved.RequiredProfiles = files.Catalog.RequiredProfiles
 		})
 		if resolveErr != nil {
 			return repositoryAnswer{}, fmt.Errorf("resolve shared-file catalog: %w", resolveErr)

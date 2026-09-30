@@ -146,6 +146,8 @@ describe('SyncFilePage [Component]', () => {
       path: 'sync/catalog.json',
       profiles: ['base', 'typescript'],
       default_profiles: ['base'],
+      required_profiles: ['base'],
+      required_paths: ['renovate.json'],
       paths: ['renovate.json', '.oxlintrc.json'],
     };
     config.document = {
@@ -175,12 +177,28 @@ describe('SyncFilePage [Component]', () => {
     config.document = {
       catalog: {
         commit: 'a'.repeat(40),
-        paths: ['renovate.json'],
+        required_profiles: ['base'],
+        required_paths: ['renovate.json'],
       },
       files: [{ path: 'renovate.json', content: '{}', formatting: { preset: 'preserve' } }],
     };
     render(SyncFilePage, { props: renderProps({ config }) });
     expect(screen.getByText(/Move this template's formatting settings/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Stage removal of this inline copy' })).toBeNull();
+  });
+
+  it('does not offer removal for an optional catalog path', () => {
+    const config = configWithTemplate();
+    config.document = {
+      catalog: {
+        commit: 'a'.repeat(40),
+        required_profiles: ['base'],
+        paths: ['renovate.json'],
+        required_paths: [],
+      },
+      files: [{ path: 'renovate.json', content: '{}' }],
+    };
+    render(SyncFilePage, { props: renderProps({ config }) });
     expect(screen.queryByRole('button', { name: 'Stage removal of this inline copy' })).toBeNull();
   });
 
