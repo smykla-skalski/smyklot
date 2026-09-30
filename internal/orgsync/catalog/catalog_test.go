@@ -120,6 +120,22 @@ func TestResolveAllowsSharedTargetInSeparateProfiles(t *testing.T) {
 	}
 }
 
+func TestRequiredProfileRefusesSharedTarget(t *testing.T) {
+	selected := source()
+	selected.Paths = []string{"mise.toml"}
+	selected.RequiredProfiles = []string{"base"}
+	selected.RequiredPaths = []string{"mise.toml"}
+	files := reader{
+		"sync/catalog.json": `{"version":1,"profiles":{"base":{"files":[{"source":"sync/base.toml","path":"mise.toml"}]},"typescript":{"files":[{"source":"sync/ts.toml","path":"mise.toml"}]}}}`,
+		"sync/base.toml":    "[tools]\ngo = \"1.27.1\"\n",
+		"sync/ts.toml":      "[tools]\nnode = \"24.21.0\"\n",
+	}
+	if _, err := catalog.Resolve(context.Background(), files, selected); err == nil ||
+		!strings.Contains(err.Error(), "overlaps another profile") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestSourceNeedsImmutableRef(t *testing.T) {
 	value := source()
 	value.Commit = "main"

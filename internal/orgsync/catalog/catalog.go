@@ -78,14 +78,31 @@ func Resolve(ctx context.Context, reader Reader, source Source) (orgsync.FileCon
 	if !slices.Equal(actual, expected) {
 		return orgsync.FileConfig{}, fmt.Errorf("catalog paths differ from configured paths")
 	}
-	for _, requiredPath := range source.RequiredPaths {
-		if !slices.ContainsFunc(files.Files, func(file orgsync.File) bool {
-			return file.Path == requiredPath && slices.Contains(source.RequiredProfiles, file.Profile)
-		}) {
-			return orgsync.FileConfig{}, fmt.Errorf("catalog required path %q is not in a required profile", requiredPath)
-		}
+	if err := validateRequiredFiles(files.Files, source); err != nil {
+		return orgsync.FileConfig{}, err
 	}
 	return files, nil
+}
+
+func validateRequiredFiles(files []orgsync.File, source Source) error {
+	for _, file := range files {
+		if !slices.Contains(source.RequiredProfiles, file.Profile) {
+			continue
+		}
+		if slices.ContainsFunc(files, func(other orgsync.File) bool {
+			return other.Path == file.Path && other.Profile != file.Profile
+		}) {
+			return fmt.Errorf("catalog required profile path %q overlaps another profile", file.Path)
+		}
+	}
+	for _, requiredPath := range source.RequiredPaths {
+		if !slices.ContainsFunc(files, func(file orgsync.File) bool {
+			return file.Path == requiredPath && slices.Contains(source.RequiredProfiles, file.Profile)
+		}) {
+			return fmt.Errorf("catalog required path %q is not in a required profile", requiredPath)
+		}
+	}
+	return nil
 }
 
 func readProfile(

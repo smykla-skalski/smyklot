@@ -44,15 +44,11 @@ func (source CatalogSource) Validate() error {
 			return invalid("catalog profile %q is invalid or selected twice", name)
 		}
 	}
-	for index, name := range source.DefaultProfiles {
-		if !slices.Contains(source.Profiles, name) || slices.Contains(source.DefaultProfiles[:index], name) {
-			return invalid("catalog default profile %q is unavailable or selected twice", name)
-		}
+	if err := validateCatalogProfileSelection("default", source.DefaultProfiles, source.Profiles); err != nil {
+		return err
 	}
-	for index, name := range source.RequiredProfiles {
-		if !slices.Contains(source.Profiles, name) || slices.Contains(source.RequiredProfiles[:index], name) {
-			return invalid("catalog required profile %q is unavailable or selected twice", name)
-		}
+	if err := validateCatalogProfileSelection("required", source.RequiredProfiles, source.Profiles); err != nil {
+		return err
 	}
 	if len(source.RequiredPaths) > 0 && len(source.RequiredProfiles) == 0 {
 		return invalid("catalog required paths need a required profile")
@@ -63,6 +59,15 @@ func (source CatalogSource) Validate() error {
 		}
 		if !slices.Contains(source.Paths, filePath) || slices.Contains(source.RequiredPaths[:index], filePath) {
 			return invalid("catalog required path %q is unavailable or selected twice", filePath)
+		}
+	}
+	return nil
+}
+
+func validateCatalogProfileSelection(kind string, selected, available []string) error {
+	for index, name := range selected {
+		if !slices.Contains(available, name) || slices.Contains(selected[:index], name) {
+			return invalid("catalog %s profile %q is unavailable or selected twice", kind, name)
 		}
 	}
 	return nil
