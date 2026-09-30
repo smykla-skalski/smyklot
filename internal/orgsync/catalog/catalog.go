@@ -78,6 +78,13 @@ func Resolve(ctx context.Context, reader Reader, source Source) (orgsync.FileCon
 	if !slices.Equal(actual, expected) {
 		return orgsync.FileConfig{}, fmt.Errorf("catalog paths differ from configured paths")
 	}
+	for _, requiredPath := range source.RequiredPaths {
+		if !slices.ContainsFunc(files.Files, func(file orgsync.File) bool {
+			return file.Path == requiredPath && slices.Contains(source.RequiredProfiles, file.Profile)
+		}) {
+			return orgsync.FileConfig{}, fmt.Errorf("catalog required path %q is not in a required profile", requiredPath)
+		}
+	}
 	return files, nil
 }
 

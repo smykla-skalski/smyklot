@@ -14,13 +14,15 @@ var (
 
 // CatalogSource identifies a versioned catalog and the paths it may write.
 type CatalogSource struct {
-	Owner           string   `json:"owner"`
-	Repo            string   `json:"repo"`
-	Commit          string   `json:"commit"`
-	Path            string   `json:"path"`
-	Profiles        []string `json:"profiles"`
-	DefaultProfiles []string `json:"default_profiles,omitempty"`
-	Paths           []string `json:"paths"`
+	Owner            string   `json:"owner"`
+	Repo             string   `json:"repo"`
+	Commit           string   `json:"commit"`
+	Path             string   `json:"path"`
+	Profiles         []string `json:"profiles"`
+	DefaultProfiles  []string `json:"default_profiles,omitempty"`
+	RequiredProfiles []string `json:"required_profiles,omitempty"`
+	Paths            []string `json:"paths"`
+	RequiredPaths    []string `json:"required_paths,omitempty"`
 }
 
 func (source CatalogSource) Validate() error {
@@ -45,6 +47,22 @@ func (source CatalogSource) Validate() error {
 	for index, name := range source.DefaultProfiles {
 		if !slices.Contains(source.Profiles, name) || slices.Contains(source.DefaultProfiles[:index], name) {
 			return invalid("catalog default profile %q is unavailable or selected twice", name)
+		}
+	}
+	for index, name := range source.RequiredProfiles {
+		if !slices.Contains(source.Profiles, name) || slices.Contains(source.RequiredProfiles[:index], name) {
+			return invalid("catalog required profile %q is unavailable or selected twice", name)
+		}
+	}
+	if len(source.RequiredPaths) > 0 && len(source.RequiredProfiles) == 0 {
+		return invalid("catalog required paths need a required profile")
+	}
+	for index, filePath := range source.RequiredPaths {
+		if err := validateFilePath("catalog required file", index, filePath); err != nil {
+			return err
+		}
+		if !slices.Contains(source.Paths, filePath) || slices.Contains(source.RequiredPaths[:index], filePath) {
+			return invalid("catalog required path %q is unavailable or selected twice", filePath)
 		}
 	}
 	return nil

@@ -171,14 +171,20 @@ where it arises.
   const file = $derived(files.find((held) => held.path === path) ?? null);
   const catalog = $derived(
     stored.catalog && typeof stored.catalog === 'object'
-      ? (stored.catalog as { commit?: string; paths?: string[] })
+      ? (stored.catalog as {
+          commit?: string;
+          required_profiles?: string[];
+          required_paths?: string[];
+        })
       : null,
   );
-  const catalogListsPath = $derived(
+  const catalogRequiresPath = $derived(
     catalog !== null &&
       /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(catalog.commit ?? '') &&
-      Array.isArray(catalog.paths) &&
-      catalog.paths.includes(path),
+      Array.isArray(catalog.required_profiles) &&
+      catalog.required_profiles.length > 0 &&
+      Array.isArray(catalog.required_paths) &&
+      catalog.required_paths.includes(path),
   );
   const savedFiles = $derived(
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
@@ -316,7 +322,7 @@ where it arises.
     if (
       frozen ||
       file === null ||
-      !catalogListsPath ||
+      !catalogRequiresPath ||
       formattingOverrideCount(file.formatting ?? {}) > 0
     )
       return;
@@ -1099,15 +1105,15 @@ where it arises.
       />
     </Card>
 
-    {#if catalogListsPath}
+    {#if catalogRequiresPath}
       <Card>
         <div class="card-head"><h2 class="card-title">Inline template</h2></div>
         {#if formattingOverrideCount(file.formatting ?? {}) > 0}
           <p>Move this template's formatting settings before removing its inline copy.</p>
         {:else}
           <p>
-            This path is in the pinned catalog. Catalog profiles decide which repositories receive
-            it. Check the sync plan before saving.
+            A required catalog profile supplies this path to every repository. Saving reconciles the
+            new source.
           </p>
           <Button tone="quiet" disabled={frozen} onclick={stageInlineRemoval}
             >Stage removal of this inline copy</Button

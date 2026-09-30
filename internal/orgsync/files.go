@@ -34,10 +34,11 @@ type File struct {
 
 // FileConfig is the files an installation expects its repositories to carry.
 type FileConfig struct {
-	Files           []File         `json:"files"`
-	Catalog         *CatalogSource `json:"catalog,omitempty"`
-	CatalogProfiles []string       `json:"-"`
-	DefaultProfiles []string       `json:"-"`
+	Files            []File         `json:"files"`
+	Catalog          *CatalogSource `json:"catalog,omitempty"`
+	CatalogProfiles  []string       `json:"-"`
+	DefaultProfiles  []string       `json:"-"`
+	RequiredProfiles []string       `json:"-"`
 
 	// Retired are paths this organization used to install and now removes.
 	//
@@ -640,7 +641,7 @@ func (c FileConfig) SelectProfiles(profiles *[]string) FileConfig {
 	filtered := c
 	filtered.Files = nil
 	for _, file := range c.Files {
-		if file.Profile == "" || slices.Contains(selected, file.Profile) {
+		if file.Profile == "" || slices.Contains(c.RequiredProfiles, file.Profile) || slices.Contains(selected, file.Profile) {
 			filtered.Files = append(filtered.Files, file)
 		}
 	}

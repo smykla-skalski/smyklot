@@ -100,6 +100,17 @@ already hold - the index ships once, matching costs no requests.
         path: 'sync/catalog.json',
         profiles: ['base', 'typescript', 'go', 'opencode-plugin'],
         default_profiles: ['base'],
+        required_profiles: ['base'],
+        required_paths: [
+          'CODE_OF_CONDUCT.md',
+          'CONTRIBUTING.md',
+          'LICENSE',
+          'SECURITY.md',
+          'renovate.json',
+          '.github/PULL_REQUEST_TEMPLATE.md',
+          '.github/ISSUE_TEMPLATE/bug_report.yml',
+          '.github/ISSUE_TEMPLATE/config.yml',
+        ],
         paths: [
           '.markdownlint-cli2.jsonc',
           'CODE_OF_CONDUCT.md',
