@@ -47,7 +47,7 @@ jobs:
   # `scripts/check-test-matrix.sh` fails on both.
   go:
     name: go (${{ matrix.area }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -101,7 +101,7 @@ jobs:
   # The storage area above still runs every ordinary Go test exactly once.
   sqlite:
     name: go (sqlite-${{ matrix.shard }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +129,7 @@ jobs:
   # which is the only thing that proves the port is a port.
   postgres:
     name: postgres (${{ matrix.area }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -205,7 +205,7 @@ jobs:
   # This frees runner slots for service and browser shards without dropping gates.
   checks:
     name: checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout code
@@ -271,7 +271,7 @@ jobs:
   # checks runner so long-running suites are not queued behind tiny jobs.
   frontend:
     name: frontend (${{ matrix.area }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -333,7 +333,7 @@ jobs:
   # twice. A new file cannot quietly run nowhere.
   browser:
     name: browser (${{ matrix.area }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
