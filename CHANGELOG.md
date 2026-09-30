@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.57.1](https://github.com/smykla-skalski/smyklot/compare/v1.57.0...v1.57.1) (2026-09-30)
+
+### Bug Fixes
+
+* **panel:** stage catalog migration in bulk ([#419](https://github.com/smykla-skalski/smyklot/issues/419)) ([b787e04](https://github.com/smykla-skalski/smyklot/commit/b787e0470a9c4e8bf751ddfe7d2ba59c080917a8))
+
 ## [1.57.0](https://github.com/smykla-skalski/smyklot/compare/v1.56.1...v1.57.0) (2026-09-30)
 
 ### Features
