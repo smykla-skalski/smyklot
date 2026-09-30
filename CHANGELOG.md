@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.57.0](https://github.com/smykla-skalski/smyklot/compare/v1.56.1...v1.57.0) (2026-09-30)
+
+### Features
+
+* **sync:** require catalog profiles ([#418](https://github.com/smykla-skalski/smyklot/issues/418)) ([5e6ac9a](https://github.com/smykla-skalski/smyklot/commit/5e6ac9a5e5d036557a8446af2a6767ec6adf6930))
+
+### Bug Fixes
+
+* **panel:** guard catalog migration ([#417](https://github.com/smykla-skalski/smyklot/issues/417)) ([8db8b06](https://github.com/smykla-skalski/smyklot/commit/8db8b061ba879119332ce5da2d0480435c502a19))
+* **panel:** stage inline catalog migration ([#416](https://github.com/smykla-skalski/smyklot/issues/416)) ([2aecf5f](https://github.com/smykla-skalski/smyklot/commit/2aecf5f2156e25613901e1fa12dbd86df8eef6e0))
+
 ## [1.56.1](https://github.com/smykla-skalski/smyklot/compare/v1.56.0...v1.56.1) (2026-09-30)
 
 ### Bug Fixes
