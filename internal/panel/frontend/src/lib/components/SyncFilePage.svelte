@@ -169,6 +169,23 @@ where it arises.
 
   const files = $derived(Array.isArray(stored.files) ? (stored.files as SyncFile[]) : []);
   const file = $derived(files.find((held) => held.path === path) ?? null);
+  const catalog = $derived(
+    stored.catalog && typeof stored.catalog === 'object'
+      ? (stored.catalog as {
+          commit?: string;
+          required_profiles?: string[];
+          required_paths?: string[];
+        })
+      : null,
+  );
+  const catalogRequiresPath = $derived(
+    catalog !== null &&
+      /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(catalog.commit ?? '') &&
+      Array.isArray(catalog.required_profiles) &&
+      catalog.required_profiles.length > 0 &&
+      Array.isArray(catalog.required_paths) &&
+      catalog.required_paths.includes(path),
+  );
   const savedFiles = $derived(
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
@@ -299,6 +316,19 @@ where it arises.
   function stageTemplateFormatting(formatting: FormattingPatch): void {
     if (file === null || frozen) return;
     onChangeDocument(templateDocumentWithFormatting(stored, path, formatting));
+  }
+
+  function stageInlineRemoval(): void {
+    if (
+      frozen ||
+      file === null ||
+      !catalogRequiresPath ||
+      formattingOverrideCount(file.formatting ?? {}) > 0
+    )
+      return;
+    if (onChangeDocument({ ...stored, files: files.filter((held) => held.path !== path) })) {
+      onOpenSection('files');
+    }
   }
 
   function applyTemplateFormatting(): void {
@@ -1074,6 +1104,23 @@ where it arises.
             }}
       />
     </Card>
+
+    {#if catalogRequiresPath}
+      <Card>
+        <div class="card-head"><h2 class="card-title">Inline template</h2></div>
+        {#if formattingOverrideCount(file.formatting ?? {}) > 0}
+          <p>Move this template's formatting settings before removing its inline copy.</p>
+        {:else}
+          <p>
+            A required catalog profile supplies this path to every repository. Saving reconciles the
+            new source.
+          </p>
+          <Button tone="quiet" disabled={frozen} onclick={stageInlineRemoval}
+            >Stage removal of this inline copy</Button
+          >
+        {/if}
+      </Card>
+    {/if}
 
     <Card unsaved={anyOverrideDirty} labelledby="file-repositories-heading">
       <div class="card-head">

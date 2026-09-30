@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.57.1](https://github.com/smykla-skalski/smyklot/compare/v1.57.0...v1.57.1) (2026-09-30)
+
+### Bug Fixes
+
+* **panel:** stage catalog migration in bulk ([#419](https://github.com/smykla-skalski/smyklot/issues/419)) ([b787e04](https://github.com/smykla-skalski/smyklot/commit/b787e0470a9c4e8bf751ddfe7d2ba59c080917a8))
+
+## [1.57.0](https://github.com/smykla-skalski/smyklot/compare/v1.56.1...v1.57.0) (2026-09-30)
+
+### Features
+
+* **sync:** require catalog profiles ([#418](https://github.com/smykla-skalski/smyklot/issues/418)) ([5e6ac9a](https://github.com/smykla-skalski/smyklot/commit/5e6ac9a5e5d036557a8446af2a6767ec6adf6930))
+
+### Bug Fixes
+
+* **panel:** guard catalog migration ([#417](https://github.com/smykla-skalski/smyklot/issues/417)) ([8db8b06](https://github.com/smykla-skalski/smyklot/commit/8db8b061ba879119332ce5da2d0480435c502a19))
+* **panel:** stage inline catalog migration ([#416](https://github.com/smykla-skalski/smyklot/issues/416)) ([2aecf5f](https://github.com/smykla-skalski/smyklot/commit/2aecf5f2156e25613901e1fa12dbd86df8eef6e0))
+
+## [1.56.1](https://github.com/smykla-skalski/smyklot/compare/v1.56.0...v1.56.1) (2026-09-30)
+
+### Bug Fixes
+
+* **panel:** include org catalog paths ([#415](https://github.com/smykla-skalski/smyklot/issues/415)) ([9f3b722](https://github.com/smykla-skalski/smyklot/commit/9f3b72201a4cf365cc5d3a04000683311bf65954))
+* **panel:** space catalog file paths ([#414](https://github.com/smykla-skalski/smyklot/issues/414)) ([3c454d4](https://github.com/smykla-skalski/smyklot/commit/3c454d4f8fa702e9c62e8458f7304e915e87a5bc))
+
+## [1.56.0](https://github.com/smykla-skalski/smyklot/compare/v1.55.6...v1.56.0) (2026-09-30)
+
+### Features
+
+* **sync:** load versioned file catalogs ([#413](https://github.com/smykla-skalski/smyklot/issues/413)) ([7334227](https://github.com/smykla-skalski/smyklot/commit/7334227c9e9598a380013aac3556de6445511fe0))
+
 ## [1.55.6](https://github.com/smykla-skalski/smyklot/compare/v1.55.5...v1.55.6) (2026-09-15)
 
 ### Bug Fixes
