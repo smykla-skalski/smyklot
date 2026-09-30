@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.56.1](https://github.com/smykla-skalski/smyklot/compare/v1.56.0...v1.56.1) (2026-09-30)
+
+### Bug Fixes
+
+* **panel:** include org catalog paths ([#415](https://github.com/smykla-skalski/smyklot/issues/415)) ([9f3b722](https://github.com/smykla-skalski/smyklot/commit/9f3b72201a4cf365cc5d3a04000683311bf65954))
+* **panel:** space catalog file paths ([#414](https://github.com/smykla-skalski/smyklot/issues/414)) ([3c454d4](https://github.com/smykla-skalski/smyklot/commit/3c454d4f8fa702e9c62e8458f7304e915e87a5bc))
+
 ## [1.56.0](https://github.com/smykla-skalski/smyklot/compare/v1.55.6...v1.56.0) (2026-09-30)
 
 ### Features
