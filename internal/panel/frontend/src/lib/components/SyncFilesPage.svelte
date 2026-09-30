@@ -444,7 +444,7 @@ already hold - the index ships once, matching costs no requests.
         {#if catalogError !== ''}
           <FormError message={catalogError} />
         {/if}
-        <div class="card-head">
+        <div class="form-actions">
           <button type="button" class="btn" onclick={saveCatalog}>Use source</button>
           <button type="button" class="btn" onclick={() => (editingCatalog = false)}>Cancel</button>
           {#if catalog}
