@@ -10,6 +10,7 @@ already hold - the index ships once, matching costs no requests.
   import { Command } from 'bits-ui';
 
   import { rankPaths, type PathMatch } from '../pathfinder';
+  import { formattingOverrideCount } from '../formatting';
   import { receipts } from '../receipts.svelte';
   import type {
     SyncConfig,
@@ -78,6 +79,8 @@ already hold - the index ships once, matching costs no requests.
           commit: string;
           path: string;
           profiles: string[];
+          required_profiles?: string[];
+          required_paths?: string[];
           paths: string[];
         })
       : null,
@@ -87,6 +90,22 @@ already hold - the index ships once, matching costs no requests.
   const savedFiles = $derived(
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
+  const requiredCatalogPaths = $derived(
+    catalog &&
+      /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(catalog.commit) &&
+      Array.isArray(catalog.required_profiles) &&
+      catalog.required_profiles.length > 0 &&
+      Array.isArray(catalog.required_paths)
+      ? catalog.required_paths.filter((path) => catalog.paths.includes(path))
+      : [],
+  );
+  const overlappingFiles = $derived(
+    files.filter((file) => requiredCatalogPaths.includes(file.path)),
+  );
+  const movableFiles = $derived(
+    overlappingFiles.filter((file) => formattingOverrideCount(file.formatting ?? {}) === 0),
+  );
+  const blockedFiles = $derived(overlappingFiles.length - movableFiles.length);
   let editingCatalog = $state(false);
   let catalogDraft = $state('');
   let catalogError = $state('');
@@ -156,6 +175,14 @@ already hold - the index ships once, matching costs no requests.
   function stage(change: Partial<Record<string, unknown>>): boolean {
     if (frozen) return false;
     return onChangeDocument({ ...stored, ...change });
+  }
+
+  function stageCatalogMigration(): void {
+    if (frozen || movableFiles.length === 0) return;
+    const moved = new Set(movableFiles.map((file) => file.path));
+    if (stage({ files: files.filter((file) => !moved.has(file.path)) })) {
+      receipts.say(`${moved.size} inline copies staged for removal. Save with the catalog source.`);
+    }
   }
 
   function same(left: unknown, right: unknown): boolean {
@@ -417,7 +444,7 @@ already hold - the index ships once, matching costs no requests.
         {#if catalogError !== ''}
           <FormError message={catalogError} />
         {/if}
-        <div class="card-head">
+        <div class="form-actions">
           <button type="button" class="btn" onclick={saveCatalog}>Use source</button>
           <button type="button" class="btn" onclick={() => (editingCatalog = false)}>Cancel</button>
           {#if catalog}
@@ -465,6 +492,29 @@ already hold - the index ships once, matching costs no requests.
         {files.length} inline {files.length === 1 ? 'template' : 'templates'}
       </h2>
     </div>
+
+    {#if overlappingFiles.length > 0}
+      <p>
+        {overlappingFiles.length} inline {overlappingFiles.length === 1
+          ? 'template overlaps'
+          : 'templates overlap'}
+        required catalog files. Stage their removal before saving the catalog source.
+      </p>
+      {#if movableFiles.length > 0}
+        <Button onclick={stageCatalogMigration} disabled={frozen}
+          >Stage removal of {movableFiles.length} inline {movableFiles.length === 1
+            ? 'copy'
+            : 'copies'}</Button
+        >
+      {/if}
+      {#if blockedFiles > 0}
+        <p>
+          {blockedFiles}
+          {blockedFiles === 1 ? 'copy has' : 'copies have'} inline formatting settings. Move those settings
+          before removing the {blockedFiles === 1 ? 'copy' : 'copies'}.
+        </p>
+      {/if}
+    {/if}
 
     {#if files.length > 0}
       <ul class="object-list">
