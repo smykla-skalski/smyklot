@@ -123,6 +123,11 @@ already hold - the index ships once, matching costs no requests.
         catalogError = 'The catalog source must be a JSON object';
         return;
       }
+      const commit = (parsed as Record<string, unknown>).commit;
+      if (typeof commit !== 'string' || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) {
+        catalogError = 'Enter a full commit SHA for the catalog source';
+        return;
+      }
       if (stage({ catalog: parsed })) editingCatalog = false;
     } catch {
       catalogError = 'Enter valid JSON for the catalog source';
@@ -427,7 +432,7 @@ already hold - the index ships once, matching costs no requests.
       <p>Profiles: {catalog.profiles.join(', ')}</p>
       <ul class="object-list">
         {#each catalog.paths as path (path)}
-          <li class="object-row"><span class="file-path">{path}</span></li>
+          <li><div class="object-row"><span class="file-path">{path}</span></div></li>
         {/each}
       </ul>
     {:else if !editingCatalog}
