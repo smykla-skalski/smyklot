@@ -82,9 +82,6 @@ already hold - the index ships once, matching costs no requests.
         })
       : null,
   );
-  const catalogInlineFiles = $derived(
-    catalog === null ? [] : files.filter((file) => catalog.paths.includes(file.path)),
-  );
   const retired = $derived(Array.isArray(stored.retired) ? (stored.retired as string[]) : []);
   const excludes = $derived(Array.isArray(stored.excludes) ? (stored.excludes as string[]) : []);
   const savedFiles = $derived(
@@ -148,15 +145,6 @@ already hold - the index ships once, matching costs no requests.
   function stage(change: Partial<Record<string, unknown>>): boolean {
     if (frozen) return false;
     return onChangeDocument({ ...stored, ...change });
-  }
-
-  function removeCatalogInlineFiles(): void {
-    if (catalog === null || catalogInlineFiles.length === 0) return;
-    const removed = catalogInlineFiles.length;
-    const catalogPaths = new Set(catalog.paths);
-    if (stage({ files: files.filter((file) => !catalogPaths.has(file.path)) })) {
-      receipts.say(`${removed} inline templates removed from the draft. Save to apply.`);
-    }
   }
 
   function same(left: unknown, right: unknown): boolean {
@@ -465,12 +453,6 @@ already hold - the index ships once, matching costs no requests.
       <h2 class="card-title">
         {files.length} inline {files.length === 1 ? 'template' : 'templates'}
       </h2>
-      {#if !frozen && catalogInlineFiles.length > 0 && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(catalog?.commit ?? '')}
-        <Button onclick={removeCatalogInlineFiles}
-          >Stage {catalogInlineFiles.length} matching inline
-          {catalogInlineFiles.length === 1 ? 'removal' : 'removals'}</Button
-        >
-      {/if}
     </div>
 
     {#if files.length > 0}
