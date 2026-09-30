@@ -137,6 +137,53 @@ describe('SyncFilePage [Component]', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each([false, true])('stages one inline removal explicitly (%s)', async (accepted) => {
+    const config = configWithTemplate();
+    const catalog = {
+      owner: 'smykla-skalski',
+      repo: '.github',
+      commit: 'a'.repeat(40),
+      path: 'sync/catalog.json',
+      profiles: ['base', 'typescript'],
+      default_profiles: ['base'],
+      paths: ['renovate.json', '.oxlintrc.json'],
+    };
+    config.document = {
+      catalog,
+      files: [
+        { path: 'renovate.json', content: '{}' },
+        { path: '.oxlintrc.json', content: '{}' },
+      ],
+    };
+    const onChangeDocument = vi.fn(() => accepted);
+    const onOpenSection = vi.fn();
+    render(SyncFilePage, {
+      props: renderProps({ config, onChangeDocument, onOpenSection }),
+    });
+    await fireEvent.click(
+      screen.getByRole('button', { name: 'Stage removal of this inline copy' }),
+    );
+    expect(onChangeDocument).toHaveBeenCalledWith({
+      catalog,
+      files: [{ path: '.oxlintrc.json', content: '{}' }],
+    });
+    expect(onOpenSection).toHaveBeenCalledTimes(accepted ? 1 : 0);
+  });
+
+  it('keeps inline formatting until it is moved', () => {
+    const config = configWithTemplate();
+    config.document = {
+      catalog: {
+        commit: 'a'.repeat(40),
+        paths: ['renovate.json'],
+      },
+      files: [{ path: 'renovate.json', content: '{}', formatting: { preset: 'preserve' } }],
+    };
+    render(SyncFilePage, { props: renderProps({ config }) });
+    expect(screen.getByText(/Move this template's formatting settings/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Stage removal of this inline copy' })).toBeNull();
+  });
+
   it('links list descriptions for whitespace keys without ID collisions', async () => {
     const merge = {
       path: 'renovate.json',

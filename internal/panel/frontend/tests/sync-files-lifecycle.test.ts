@@ -100,30 +100,4 @@ describe('shared-file draft lifecycle', () => {
     expect(row.textContent).not.toContain('updated');
     expect(row.querySelector('.mx-instep')).toBeNull();
   });
-  it.each([false, true])('stages only catalog-backed inline removals (%s)', async (accepted) => {
-    const input = props({ onChangeDocument: vi.fn(() => accepted) });
-    const catalog = {
-      owner: 'smykla-skalski',
-      repo: '.github',
-      commit: 'a'.repeat(40),
-      path: 'sync/catalog.json',
-      profiles: ['base'],
-      default_profiles: ['base'],
-      paths: ['CONTRIBUTING.md'],
-    };
-    input.config!.document = {
-      catalog,
-      files: [
-        { path: 'CONTRIBUTING.md', content: 'shared' },
-        { path: 'local.md', content: 'local' },
-      ],
-    };
-    render(SyncFilesPage, { props: input });
-    await fireEvent.click(screen.getByRole('button', { name: 'Stage 1 matching inline removal' }));
-    expect(input.onChangeDocument).toHaveBeenCalledWith({
-      catalog,
-      files: [{ path: 'local.md', content: 'local' }],
-    });
-    expect(receipt).toHaveBeenCalledTimes(accepted ? 1 : 0);
-  });
 });
