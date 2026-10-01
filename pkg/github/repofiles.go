@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	gogithub "github.com/google/go-github/v91/github"
+	gogithub "github.com/google/go-github/v92/github"
 )
 
 // TreeEntry is one path a repository's tree records.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v91/github"
+	gogithub "github.com/google/go-github/v92/github"
 )
 
 // AddReaction adds an emoji reaction to a comment
