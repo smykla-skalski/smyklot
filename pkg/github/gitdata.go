@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v91/github"
+	gogithub "github.com/google/go-github/v92/github"
 )
 
 // FileMode is the mode a tree entry carries. GitHub accepts a small closed set
