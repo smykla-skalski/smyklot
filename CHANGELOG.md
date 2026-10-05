@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.57.2](https://github.com/smykla-skalski/smyklot/compare/v1.57.1...v1.57.2) (2026-10-05)
+
+### Bug Fixes
+
+* **deps:** update ginkgo to v2.33.0 ([#402](https://github.com/smykla-skalski/smyklot/issues/402)) ([0c79051](https://github.com/smykla-skalski/smyklot/commit/0c790512c37c987b72ba13a47883528381fa4e3c))
+* **deps:** update module github.com/google/go-github/v91 to v92 ([#393](https://github.com/smykla-skalski/smyklot/issues/393)) ([e8e9fd3](https://github.com/smykla-skalski/smyklot/commit/e8e9fd363908a964c83df81f0baa681f25d3029c))
+* **deps:** update module github.com/google/go-github/v91 to v92 ([#427](https://github.com/smykla-skalski/smyklot/issues/427)) ([8b73495](https://github.com/smykla-skalski/smyklot/commit/8b734956e2fa2bfc035f8df2d43165cecad82166))
+* **deps:** update module github.com/jferrl/go-githubauth to v1.8.0 ([#408](https://github.com/smykla-skalski/smyklot/issues/408)) ([d64a4db](https://github.com/smykla-skalski/smyklot/commit/d64a4dbcef782662c6423ee82c5f1ef8f93b8658))
+* **deps:** update module github.com/onsi/gomega to v1.43.1 ([#401](https://github.com/smykla-skalski/smyklot/issues/401)) ([8a03c6b](https://github.com/smykla-skalski/smyklot/commit/8a03c6b358dfe29b801533459dbae2c3331b5cbc))
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.5 ([#389](https://github.com/smykla-skalski/smyklot/issues/389)) ([52dbf50](https://github.com/smykla-skalski/smyklot/commit/52dbf500aaf51daea5c9dc3e1f3f4360cff73017))
+* **deps:** update module modernc.org/sqlite to v1.59.0 ([#400](https://github.com/smykla-skalski/smyklot/issues/400)) ([6ace226](https://github.com/smykla-skalski/smyklot/commit/6ace22668e5f668ca690f3cce8f2d034a4057c41))
+
 ## [1.57.1](https://github.com/smykla-skalski/smyklot/compare/v1.57.0...v1.57.1) (2026-09-30)
 
 ### Bug Fixes
