@@ -430,21 +430,35 @@ describe('repository option control anatomy', () => {
           await page
             .getByRole('button', { name: 'Save', exact: true })
             .waitFor({ state: 'hidden' });
-          const beforeHeight = (await card.boundingBox())!.height;
           const manage = card.getByRole('combobox', {
             name: 'Manage an option in Commit wording',
             exact: true,
           });
-          await manage.click();
           const choices = page.getByRole('listbox', {
             name: 'Manage an option in Commit wording',
             exact: true,
           });
+          const mergeTitle = choices.getByRole('option', {
+            name: 'Merge commit title',
+            exact: true,
+          });
+          // The seed manages merge commits off, and a wording waits for its merge method.
+          await manage.click();
           await choices.waitFor();
+          expect(await mergeTitle.getAttribute('aria-disabled')).toBe('true');
+          await page.keyboard.press('Escape');
+          await choices.waitFor({ state: 'hidden' });
+          const mergeCommits = page.locator('[data-option=allow_merge_commit]');
+          await mergeCommits.locator('label.switch').click();
+          await expect.poll(() => mergeCommits.locator('input').isChecked()).toBe(true);
+          const beforeHeight = (await card.boundingBox())!.height;
+          await manage.click();
+          await choices.waitFor();
+          expect(await mergeTitle.getAttribute('aria-disabled')).toBeNull();
           expect(Math.abs((await card.boundingBox())!.height - beforeHeight)).toBeLessThan(0.6);
           if (directory)
             await page.screenshot({ path: join(directory, `manage-${colorScheme}-${width}.png`) });
-          await choices.getByRole('option', { name: 'Merge commit title', exact: true }).click();
+          await mergeTitle.click();
           const added = card
             .locator('.policy-row')
             .filter({ has: page.locator('.setting-name', { hasText: /^Merge commit title$/u }) });
@@ -460,6 +474,10 @@ describe('repository option control anatomy', () => {
             .click();
           await expect.poll(() => added.count()).toBe(0);
           await expect.poll(() => card.locator('.is-unsaved').count()).toBe(0);
+          await mergeCommits.locator('label.switch').click();
+          await page
+            .getByRole('button', { name: 'Save', exact: true })
+            .waitFor({ state: 'hidden' });
           expect(
             await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
           ).toBeLessThanOrEqual(1);
