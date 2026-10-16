@@ -140,6 +140,52 @@
   );
   export const SETTINGS_FIELD_TOTAL = SETTINGS_FIELD_KEYS.length;
 
+  /**
+   * What each setting is meaningless without: `requires` in `settingsFields`
+   * (internal/orgsync/settings.go), which a test holds this copy to. The server
+   * refuses a document that asks for one of these and switches the other off.
+   */
+  export const SETTING_REQUIRES: ReadonlyMap<string, string> = new Map([
+    ['squash_merge_commit_title', 'allow_squash_merge'],
+    ['squash_merge_commit_message', 'allow_squash_merge'],
+    ['merge_commit_title', 'allow_merge_commit'],
+    ['merge_commit_message', 'allow_merge_commit'],
+    ['secret_scanning', 'advanced_security'],
+    ['secret_scanning_push_protection', 'secret_scanning'],
+  ]);
+
+  /** Every setting under this one, nearest first. One step per entry, so a circle cannot hang it. */
+  function beneath(key: string): string[] {
+    const chain: string[] = [];
+    let under = SETTING_REQUIRES.get(key);
+    while (under !== undefined && chain.length < SETTING_REQUIRES.size) {
+      chain.push(under);
+      under = SETTING_REQUIRES.get(under);
+    }
+    return chain;
+  }
+
+  /** Whether something this setting stands on is managed off, so it can only be off too. */
+  function settingHeldOff(document: Record<string, unknown>, key: string): boolean {
+    return beneath(key).some((under) => document[under] === false);
+  }
+
+  /**
+   * The document with `key` switched off, and everything standing on it with
+   * it: a switch goes off, and a wording, which has no off, stops being
+   * managed. Left on, the pair is a save the server refuses - which is how
+   * secret scanning could not be switched off while push protection stayed on.
+   */
+  function switchOff(document: Record<string, unknown>, key: string): Record<string, unknown> {
+    const next: Record<string, unknown> = { ...document, [key]: false };
+    for (const [other, value] of Object.entries(next)) {
+      if (value === false || !beneath(other).includes(key)) continue;
+      if (typeof value === 'boolean') next[other] = false;
+      else delete next[other];
+    }
+    return next;
+  }
+
   const SETTING_NAMES: ReadonlyMap<string, string> = new Map(
     SETTING_GROUPS.flatMap((group) => group.fields.map((field) => [field.key, field.label])),
   );
@@ -167,7 +213,8 @@ The settings page is the policy: only managed settings render as rows,
 and each group lists the options still owned by individual repositories.
 A shared picker adds one without expanding the page. The x removes management,
 never "writes the default". "All" in the segmented control
-turns the unmanaged names into rows of their own.
+turns the unmanaged names into rows of their own. Switching a setting off
+switches off what needs it in the same edit, because the server refuses the pair.
 -->
 
 <script lang="ts">
@@ -234,8 +281,12 @@ turns the unmanaged names into rows of their own.
     if (frozen) return;
     /* A newly managed setting arrives holding something rather than a hole:
        on for a switch, the first word for a choice - the row is right there
-       to say otherwise. */
-    const value = field.kind === 'switch' ? true : (field.choices[0]?.value ?? '');
+       to say otherwise. Off for a switch whose ground is managed off, because
+       on there is a save the server refuses. */
+    const value =
+      field.kind === 'switch'
+        ? !settingHeldOff(stored, field.key)
+        : (field.choices[0]?.value ?? '');
     onChangeDocument({ ...stored, [field.key]: value });
     await tick();
     if (frozen) return;
@@ -256,7 +307,9 @@ turns the unmanaged names into rows of their own.
 
   function setValue(field: SettingDef, value: unknown): void {
     if (frozen) return;
-    onChangeDocument({ ...stored, [field.key]: value });
+    onChangeDocument(
+      value === false ? switchOff(stored, field.key) : { ...stored, [field.key]: value },
+    );
   }
 
   function fieldDirty(key: string): boolean {

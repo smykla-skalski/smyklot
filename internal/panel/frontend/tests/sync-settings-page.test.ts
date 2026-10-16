@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import SyncSettingsPage from '../src/lib/components/SyncSettingsPage.svelte';
+import SyncSettingsPage, { SETTING_REQUIRES } from '../src/lib/components/SyncSettingsPage.svelte';
 import { chooseOption } from './support/select';
 import type { SyncConfig } from '../src/lib/types';
 
@@ -132,6 +134,98 @@ describe('SyncSettingsPage [Component]', () => {
       has_wiki: false,
       allow_merge_commit: true,
     });
+  });
+
+  /** What one flip of a managed switch sends, from a document of its own. */
+  async function flip(document: Record<string, unknown>, label: string) {
+    const sent: Array<Record<string, unknown>> = [];
+    render(SyncSettingsPage, {
+      ...base,
+      config: config({ document }),
+      onChangeDocument: (next: Record<string, unknown>) => {
+        sent.push(next);
+      },
+    });
+    await fireEvent.click(row(label).querySelector<HTMLInputElement>('input[type="checkbox"]')!);
+    expect(sent).toHaveLength(1);
+    return sent[0];
+  }
+
+  // The server refuses push protection beside secret scanning switched off, so
+  // leaving it on made secret scanning impossible to switch off.
+  it('switches off what needs a setting along with it', async () => {
+    expect(
+      await flip(
+        { secret_scanning: true, secret_scanning_push_protection: true, advanced_security: false },
+        'Secret scanning',
+      ),
+    ).toEqual({
+      secret_scanning: false,
+      secret_scanning_push_protection: false,
+      advanced_security: false,
+    });
+  });
+
+  it('follows the chain through a setting nobody manages', async () => {
+    expect(
+      await flip(
+        { advanced_security: true, secret_scanning_push_protection: true, has_wiki: true },
+        'Advanced security',
+      ),
+    ).toEqual({
+      advanced_security: false,
+      secret_scanning_push_protection: false,
+      has_wiki: true,
+    });
+  });
+
+  it('stops managing a wording whose merge method goes off, since a wording has no off', async () => {
+    expect(
+      await flip(
+        {
+          allow_squash_merge: true,
+          squash_merge_commit_title: 'PR_TITLE',
+          merge_commit_title: 'PR_TITLE',
+        },
+        'Squash merging',
+      ),
+    ).toEqual({ allow_squash_merge: false, merge_commit_title: 'PR_TITLE' });
+  });
+
+  it('switches nothing else on when a setting goes on', async () => {
+    expect(
+      await flip(
+        { secret_scanning: false, secret_scanning_push_protection: false },
+        'Push protection',
+      ),
+    ).toEqual({ secret_scanning: false, secret_scanning_push_protection: true });
+  });
+
+  it('manages a switch off when what it needs is managed off', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    render(SyncSettingsPage, {
+      ...base,
+      config: config({ document: { secret_scanning: false } }),
+      onChangeDocument: (document: Record<string, unknown>) => {
+        sent.push(document);
+      },
+    });
+
+    await chooseOption(
+      screen.getByRole('combobox', { name: 'Manage an option in Security' }),
+      'Push protection',
+    );
+
+    expect(sent).toEqual([{ secret_scanning: false, secret_scanning_push_protection: false }]);
+  });
+
+  it('knows the same dependencies the server enforces', () => {
+    const source = readFileSync('../../orgsync/settings.go', 'utf8');
+    const server = [...source.matchAll(/(?:textField|securityField)\("([a-z_]+)", "([a-z_]+)",/gu)]
+      .map((match) => [match[1], match[2]])
+      .sort();
+    expect(server.length).toBeGreaterThan(0);
+    expect([...SETTING_REQUIRES].sort()).toEqual(server);
   });
 
   it('carries the switch that says whether any of this is enforced', async () => {
