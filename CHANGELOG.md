@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.57.3](https://github.com/smykla-skalski/smyklot/compare/v1.57.2...v1.57.3) (2026-10-16)
+
+### Bug Fixes
+
+* **panel:** respect setting dependencies ([#449](https://github.com/smykla-skalski/smyklot/issues/449)) ([3d14bd9](https://github.com/smykla-skalski/smyklot/commit/3d14bd93996073e642b9de45de8d70d7d7fe5d20))
+
 ## [1.57.2](https://github.com/smykla-skalski/smyklot/compare/v1.57.1...v1.57.2) (2026-10-05)
 
 ### Bug Fixes
