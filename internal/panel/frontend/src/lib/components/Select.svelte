@@ -167,6 +167,7 @@ A form-backed field preserves submission, required validation and reset behavior
               value={option.key}
               label={option.label}
               disabled={option.disabled}
+              aria-disabled={option.disabled || undefined}
             >
               <span class="menu-option-check" aria-hidden="true">
                 {#if Object.is(option.value, value)}<Icon name="check" size="base" />{/if}

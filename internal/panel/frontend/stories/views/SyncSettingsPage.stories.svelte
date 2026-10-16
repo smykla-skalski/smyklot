@@ -66,6 +66,23 @@
 
 <Story name="Unsaved document" args={{ dirtyDocument: true, savedDocument: {} }} />
 
+<!-- Secret scanning managed off: push protection will not go on, and says
+     what it needs. Turning that on for the reader is no answer - down the
+     chain it is advanced security, which GitHub bills for. -->
+<Story
+  name="Held off"
+  args={{
+    config: {
+      ...CONFIG,
+      document: {
+        ...CONFIG.document,
+        secret_scanning: false,
+        secret_scanning_push_protection: false,
+      },
+    },
+  }}
+/>
+
 <!-- A reader without write: the policy still reads, the controls stand down. -->
 <Story name="Read only" args={{ readOnly: true }} />
 
