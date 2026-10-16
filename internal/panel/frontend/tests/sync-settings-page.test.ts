@@ -192,13 +192,75 @@ describe('SyncSettingsPage [Component]', () => {
     ).toEqual({ allow_squash_merge: false, merge_commit_title: 'PR_TITLE' });
   });
 
-  it('switches nothing else on when a setting goes on', async () => {
+  // Switching the ground on for the reader would be a policy nobody asked for -
+  // under push protection, advanced security, which GitHub bills for.
+  it('will not switch a setting on while what it needs is managed off', () => {
+    render(SyncSettingsPage, {
+      ...base,
+      config: config({
+        document: { advanced_security: false, secret_scanning_push_protection: false },
+      }),
+    });
+
+    const toggle =
+      row('Push protection').querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(toggle.disabled).toBe(true);
+    // The server's own answer: the nearest setting switched off, through the unmanaged one.
+    const note = document.getElementById(toggle.getAttribute('aria-describedby') ?? '');
+    expect(note?.textContent?.trim()).toBe('Needs Advanced security');
+    expect(
+      row('Advanced security').querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled,
+    ).toBe(false);
+  });
+
+  it('still switches a held setting off, so a refused draft can be put right', async () => {
     expect(
       await flip(
-        { secret_scanning: false, secret_scanning_push_protection: false },
+        { secret_scanning: false, secret_scanning_push_protection: true },
         'Push protection',
       ),
-    ).toEqual({ secret_scanning: false, secret_scanning_push_protection: true });
+    ).toEqual({ secret_scanning: false, secret_scanning_push_protection: false });
+  });
+
+  it('will not manage a wording whose merge method is managed off', async () => {
+    const sent: Array<Record<string, unknown>> = [];
+    render(SyncSettingsPage, {
+      ...base,
+      config: config({ document: { allow_squash_merge: false } }),
+      onChangeDocument: (document: Record<string, unknown>) => {
+        sent.push(document);
+      },
+    });
+    const picker = screen.getByRole('combobox', { name: 'Manage an option in Commit wording' });
+
+    await chooseOption(picker, 'Squash commit title');
+    expect(sent).toEqual([]);
+
+    await chooseOption(picker, 'Merge commit title');
+    expect(sent).toEqual([{ allow_squash_merge: false, merge_commit_title: 'PR_TITLE' }]);
+  });
+
+  it('keeps the same wording out of reach under All', async () => {
+    render(SyncSettingsPage, {
+      ...base,
+      config: config({ document: { allow_squash_merge: false } }),
+    });
+    const everything = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+      (held) => held.value === 'everything',
+    );
+    await fireEvent.click(everything as HTMLInputElement);
+
+    expect(
+      screen.getByRole('button', { name: 'Manage Squash commit title' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(row('Squash commit title').textContent).toContain('Needs Squash merging');
+    expect(
+      screen.getByRole('button', { name: 'Manage Merge commit title' }).hasAttribute('disabled'),
+    ).toBe(false);
+    // A switch has an off to arrive at, so it stays manageable.
+    expect(
+      screen.getByRole('button', { name: 'Manage Push protection' }).hasAttribute('disabled'),
+    ).toBe(false);
   });
 
   it('manages a switch off when what it needs is managed off', async () => {

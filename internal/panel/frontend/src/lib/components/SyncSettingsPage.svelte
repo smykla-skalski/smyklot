@@ -165,9 +165,14 @@
     return chain;
   }
 
-  /** Whether something this setting stands on is managed off, so it can only be off too. */
-  function settingHeldOff(document: Record<string, unknown>, key: string): boolean {
-    return beneath(key).some((under) => document[under] === false);
+  /**
+   * The nearest setting under this one that the document switches off - the
+   * one the server names when it refuses this one on. Nothing switches it on
+   * for the reader: under push protection that would be advanced security,
+   * which GitHub bills for.
+   */
+  function heldOffBy(document: Record<string, unknown>, key: string): string | undefined {
+    return beneath(key).find((under) => document[under] === false);
   }
 
   /**
@@ -214,7 +219,8 @@ and each group lists the options still owned by individual repositories.
 A shared picker adds one without expanding the page. The x removes management,
 never "writes the default". "All" in the segmented control
 turns the unmanaged names into rows of their own. Switching a setting off
-switches off what needs it in the same edit, because the server refuses the pair.
+switches off what needs it in the same edit, and a setting whose ground is
+managed off will not go on until it does, because the server refuses the pair.
 -->
 
 <script lang="ts">
@@ -285,7 +291,7 @@ switches off what needs it in the same edit, because the server refuses the pair
        on there is a save the server refuses. */
     const value =
       field.kind === 'switch'
-        ? !settingHeldOff(stored, field.key)
+        ? heldOffBy(stored, field.key) === undefined
         : (field.choices[0]?.value ?? '');
     onChangeDocument({ ...stored, [field.key]: value });
     await tick();
@@ -458,6 +464,7 @@ switches off what needs it in the same edit, because the server refuses the pair
         <div class="policy-rows">
           {#each rows as field (field.key)}
             {@const managed = field.key in stored}
+            {@const heldBy = heldOffBy(stored, field.key)}
             <div
               class="policy-row"
               data-option={field.key}
@@ -466,24 +473,33 @@ switches off what needs it in the same edit, because the server refuses the pair
             >
               <span class="setting-say">
                 <span class="setting-name">{field.label}</span>
-                {#if field.why !== ''}<span class="setting-why">{field.why}</span>{/if}
+                {#if heldBy !== undefined}
+                  <span class="setting-why" id="setting-held-{field.key}"
+                    >Needs {settingName(heldBy)}</span
+                  >
+                {:else if field.why !== ''}<span class="setting-why">{field.why}</span>{/if}
               </span>
               <span class="policy-value option-controls">
                 {#if !managed}
                   <span class="setting-unmanaged">From each repository</span>
+                  <!-- A held switch can still be managed, arriving off; a
+                       wording has no off to arrive at. -->
                   <IconButton
                     toolbar
                     icon="plus"
                     label="Manage {field.label}"
-                    disabled={frozen}
+                    disabled={frozen || (field.kind === 'choice' && heldBy !== undefined)}
                     onclick={() => manage(field)}
                   />
                 {:else}
                   {#if field.kind === 'switch'}
+                    <!-- Held off, it will not go on. One already on stays
+                         switchable, so a held document can still be put right. -->
                     <Switch
                       checked={stored[field.key] === true}
                       label={field.label}
-                      disabled={frozen}
+                      descriptionId={heldBy === undefined ? undefined : `setting-held-${field.key}`}
+                      disabled={frozen || (heldBy !== undefined && stored[field.key] !== true)}
                       onToggle={(next) => setValue(field, next)}
                     />
                   {:else}
@@ -526,7 +542,12 @@ switches off what needs it in the same edit, because the server refuses the pair
                     placeholder="Manage an option"
                     disabled={frozen}
                     aria-label="Manage an option in {group.title}"
-                    options={rest.map((field) => ({ value: field.key, label: field.label }))}
+                    options={rest.map((field) => ({
+                      value: field.key,
+                      label: field.label,
+                      disabled:
+                        field.kind === 'choice' && heldOffBy(stored, field.key) !== undefined,
+                    }))}
                     onValueChange={(key) => {
                       const field = rest.find((candidate) => candidate.key === key);
                       if (field) manage(field);
