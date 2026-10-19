@@ -79,7 +79,7 @@ func (g *Gate) applyPendingCISignal(
 		if err != nil {
 			return 0, err
 		}
-		if err := g.ensureWebhookPendingCIBaseline(ctx, source, signal.PullRequest); err != nil {
+		if err := g.ensureWebhookPendingCIBaseline(ctx, source, signal); err != nil {
 			return 0, err
 		}
 		if changed {
@@ -168,8 +168,9 @@ func (g *Gate) wakePendingCIPullRequest(
 func (g *Gate) ensureWebhookPendingCIBaseline(
 	ctx context.Context,
 	source webhook.Source,
-	pullRequest int,
+	signal pendingci.Signal,
 ) error {
+	pullRequest := signal.PullRequest
 	if !g.panelled || g.Checks == nil || pullRequest <= 0 {
 		return nil
 	}
@@ -179,6 +180,12 @@ func (g *Gate) ensureWebhookPendingCIBaseline(
 		pullRequest,
 	)
 	if err != nil || !eligible {
+		return err
+	}
+	// A repeated CI hint cannot improve a baseline already applied to this
+	// exact head. New heads and incomplete checks still require live GitHub reads.
+	current, err := g.Checks.baselineCurrent(ctx, repository.ID, pullRequest, signal.HeadSHA)
+	if err != nil || current {
 		return err
 	}
 	installationID, err := parsePositiveInt64(target.InstallationID)

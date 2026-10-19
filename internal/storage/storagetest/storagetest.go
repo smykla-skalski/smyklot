@@ -31,6 +31,9 @@ type Harness struct {
 	// grant row first; neither transaction may deadlock or erase revocation.
 	EndElevationBeforeWrite func(ctx context.Context, end, write func() error) (endErr, writeErr error)
 
+	// OverlapPendingCIWake holds the source update while a lease attempts its locks.
+	OverlapPendingCIWake func(ctx context.Context, wake, lease func() error) (wakeErr, leaseErr error)
+
 	// RejectSettingsCheckpoints makes the next settings checkpoint insert fail.
 	// Runtime settings use this after updating every mutable aggregate, so the
 	// shared spec can prove those earlier writes remain transactional.

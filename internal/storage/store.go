@@ -132,6 +132,7 @@ type DeliveryStore interface {
 	ListFailures(context.Context, string, FailurePageRequest) (FailurePage, error)
 	ListRootFailures(context.Context, FailurePageRequest) (RootFailurePage, error)
 	PruneDeliveries(context.Context, time.Time) error
+	PruneDeliveryPayloads(context.Context, time.Time) error
 }
 
 // AuditReader reads immutable mutation history.

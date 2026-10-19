@@ -60,6 +60,9 @@ func DeclareSpecs(harness Harness) {
 	declareDeliveryOrderSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declarePendingCIConcurrencySpecs(harness, func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 	declareFailureQueueSpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})

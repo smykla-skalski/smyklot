@@ -14,11 +14,17 @@ const (
 
 const EventRetention = 30 * 24 * time.Hour
 
+const WebhookRetention = 7 * 24 * time.Hour
+
+const DeliveryPayloadRetention = 24 * time.Hour
+
 const RoutineRetention = 48 * time.Hour
 
 func Retention(kind Kind) time.Duration {
 	switch kind {
-	case KindWebhookDelivery, KindPendingCI, KindSyncScan, KindSyncApply,
+	case KindWebhookDelivery:
+		return WebhookRetention
+	case KindPendingCI, KindSyncScan, KindSyncApply,
 		KindScheduleChange:
 		return EventRetention
 	default:

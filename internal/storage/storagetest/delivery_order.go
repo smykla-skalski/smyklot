@@ -12,6 +12,52 @@ import (
 )
 
 func declareDeliveryOrderSpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	declareDeliveryRetentionSpecs(runtime)
+	It("isolates a busy repository from other delivery work and releases its next event", func() {
+		ctx, store, now := runtime()
+		_, target := seedInstallation(ctx, store, now)
+		repository := "repo-1"
+		claim := storage.DeliveryClaim{
+			ClaimKey: "busy-first", DeliveryID: "busy-first", TargetID: target.TargetID,
+			RepositoryID: &repository, RepositoryFullName: "owner/busy", Event: "check_run",
+			Payload: []byte(`{"action":"completed"}`), ClaimedAt: now,
+		}
+		first, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		claim.ClaimKey, claim.DeliveryID = "busy-next", "busy-next"
+		next, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		other := "other-repository"
+		claim.RepositoryID = &other
+		claim.ClaimKey, claim.DeliveryID = "other-command", "other-command"
+		claim.Event = "issue_comment"
+		command, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		until := now.Add(time.Minute)
+		leased, err := store.LeaseDelivery(ctx, now, until)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).NotTo(BeNil())
+		Expect(leased.Work.ID).To(Equal(first.ID))
+		leased, err = store.LeaseDelivery(ctx, now, until)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).NotTo(BeNil())
+		Expect(leased.Work.ID).To(Equal(command.ID))
+		blocked, err := store.LeaseDelivery(ctx, now, until)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(blocked.Work).To(BeNil())
+		Expect(blocked.AvailableAt).To(HaveValue(BeTemporally("==", until)))
+		Expect(store.CompleteDelivery(ctx, first.ID, now)).To(Succeed())
+		leased, err = store.LeaseDelivery(ctx, now, until)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).NotTo(BeNil())
+		Expect(leased.Work.ID).To(Equal(next.ID))
+		leased, err = store.LeaseDelivery(ctx, until, until.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).NotTo(BeNil())
+		Expect(leased.Work.ID).To(Equal(next.ID))
+		Expect(leased.Work.Attempt).To(Equal(2))
+	})
+
 	It("keeps delivery outcomes immutable after redelivery and late finalization", func() {
 		ctx, store, now := runtime()
 		_, target := seedInstallation(ctx, store, now)

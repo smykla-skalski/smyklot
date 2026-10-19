@@ -403,6 +403,7 @@ describe('Root runtime settings drafts', () => {
       await width.fill(originalWidth === '4' ? '2' : '4');
       expect(await prefix.inputValue()).toBe('/bot');
       await page.reload({ waitUntil: 'domcontentloaded' });
+      await prefix.waitFor();
       await expect.poll(() => prefix.inputValue()).toBe('/bot');
       expect(await width.inputValue()).not.toBe(originalWidth);
       await prefix.fill(originalPrefix);

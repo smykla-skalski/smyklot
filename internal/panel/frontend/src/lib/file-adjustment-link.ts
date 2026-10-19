@@ -1,3 +1,4 @@
+import { navigating } from '$app/state';
 import { fileFormat } from './file-format';
 
 const PREFIX = '#file-sync=';
@@ -24,15 +25,27 @@ export function fileAdjustmentPath(hash: string): string | null {
 
 /** Async repository reads can finish after the router's initial fragment scroll. */
 export function revealFileAdjustment(node: HTMLElement): () => void {
-  const frame = requestAnimationFrame(() => {
-    if (!node.isConnected) return;
-    const top = Math.max(
-      0,
-      document.querySelector('.top-bar')?.getBoundingClientRect().bottom ?? 0,
-    );
-    const gap = Number.parseFloat(getComputedStyle(node).scrollMarginBlockStart) || 0;
-    window.scrollBy({ top: node.getBoundingClientRect().top - top - gap, behavior: 'instant' });
-    node.focus({ preventScroll: true });
-  });
-  return () => cancelAnimationFrame(frame);
+  let cancelled = false;
+  let frame: number | undefined;
+  const schedule = () => {
+    if (cancelled) return;
+    frame = requestAnimationFrame(() => {
+      if (!node.isConnected) return;
+      const top = Math.max(
+        0,
+        document.querySelector('.top-bar')?.getBoundingClientRect().bottom ?? 0,
+      );
+      const gap = Number.parseFloat(getComputedStyle(node).scrollMarginBlockStart) || 0;
+      window.scrollBy({ top: node.getBoundingClientRect().top - top - gap, behavior: 'instant' });
+      node.focus({ preventScroll: true });
+    });
+  };
+  // The router resets focus after the new component mounts.
+  const complete = navigating.complete;
+  if (complete) void complete.then(schedule, () => {});
+  else schedule();
+  return () => {
+    cancelled = true;
+    if (frame !== undefined) cancelAnimationFrame(frame);
+  };
 }

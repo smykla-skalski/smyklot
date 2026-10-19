@@ -22,6 +22,9 @@ func (s *Store) ApplyQueueAction(
 		return workqueue.Item{}, fmt.Errorf("begin queue action: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := s.lockQueueActionSource(ctx, tx, id); err != nil {
+		return workqueue.Item{}, noRows(err)
+	}
 	item, err := getQueueItem(ctx, tx, id, s.dialect.RowLock())
 	if err != nil {
 		return workqueue.Item{}, noRows(err)
@@ -51,6 +54,28 @@ func (s *Store) ApplyQueueAction(
 	}
 
 	return updated, nil
+}
+
+func (s *Store) lockQueueActionSource(ctx context.Context, tx *transaction, id string) error {
+	item, err := getQueueItem(ctx, tx, id, "")
+	if err != nil {
+		return err
+	}
+	var table string
+	switch item.SourceKind {
+	case queueSourcePendingCI:
+		table = "pending_ci_requests"
+	case queueSourceDelivery:
+		table = "deliveries"
+	default:
+		return nil
+	}
+	var sourceID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM "+table+" WHERE id = ?"+s.dialect.RowLock(), item.SourceID).Scan(&sourceID); err != nil {
+		return fmt.Errorf("lock queue action source: %w", err)
+	}
+
+	return nil
 }
 
 // syncQueueSourceSchedule keeps source-backed dispatch predicates aligned with

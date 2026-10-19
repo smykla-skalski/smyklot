@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
@@ -89,14 +90,26 @@ func (s *Store) nextQueueDispatch(
 	if err != nil {
 		return queueDispatchChoice{}, false, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT"+queueItemColumns+`
+	query := "SELECT" + queueItemColumns + `
 FROM queue_items
 WHERE lane = ?
   AND state IN ('scheduled', 'ready', 'retrying', 'running')
   AND (immediate_dispatch = TRUE OR eligible_at <= ?)
-  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`+s.dialect.RowLock(),
-		lane, now, now,
-	)
+  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`
+	arguments := []any{lane, now, now}
+	if lane == workqueue.LaneWebhook {
+		query += ` AND NOT EXISTS (
+    SELECT 1 FROM deliveries busy
+    WHERE busy.repository_id = queue_items.repository_id
+      AND busy.status = 'running' AND busy.lease_expires_at > ?)`
+		arguments = append(arguments, now)
+	}
+	// Source-backed dispatch must lock the source before its queue row.
+	// Candidate locks would invert that order during a concurrent wake.
+	if lane != workqueue.LanePendingCI && lane != workqueue.LaneWebhook {
+		query += s.dialect.RowLock()
+	}
+	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return queueDispatchChoice{}, false, fmt.Errorf("list dispatch candidates: %w", err)
 	}
@@ -118,6 +131,18 @@ WHERE lane = ?
 	choice, ok := chooseQueueDispatch(items, state)
 
 	return choice, ok, nil
+}
+
+func (s *Store) lockDispatchChoice(ctx context.Context, tx *transaction, choice queueDispatchChoice) error {
+	item, err := getQueueItem(ctx, tx, choice.item.ID, s.dialect.RowLock())
+	if err != nil {
+		return fmt.Errorf("lock dispatch choice: %w", err)
+	}
+	if item.Revision != choice.item.Revision {
+		return storage.ErrConflict
+	}
+
+	return nil
 }
 
 func (s *Store) deferClosedWindowItems(

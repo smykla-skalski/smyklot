@@ -101,6 +101,9 @@ FOR EACH ROW EXECUTE FUNCTION %[1]s.reject_settings_checkpoint();`, schema))
 		EndElevationBeforeWrite: func(ctx context.Context, end, write func() error) (error, error) {
 			return overlapElevationEnd(ctx, schema, end, write)
 		},
+		OverlapPendingCIWake: func(ctx context.Context, wake, lease func() error) (error, error) {
+			return overlapPendingCIWake(ctx, schema, wake, lease)
+		},
 		CountSettingsCheckpoints: func(ctx context.Context) int64 {
 			raw := connect(ctx)
 			defer func() { Expect(raw.Close()).To(Succeed()) }()

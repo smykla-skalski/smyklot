@@ -475,12 +475,15 @@ func (s *Store) selectDuePendingCI(
 	request, err := scanPendingCI(tx.QueryRowContext(ctx, pendingCISelect+`
 WHERE id = ? AND (lifecycle = ? OR cleanup_pending = TRUE) AND next_check_at <= ?
   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-	`,
+	`+s.dialect.RowLock(),
 		choice.item.SourceID,
 		pendingci.LifecycleArmed,
 		now,
 		now,
 	))
+	if err == nil {
+		err = s.lockDispatchChoice(ctx, tx, choice)
+	}
 
 	return request, choice, err
 }
