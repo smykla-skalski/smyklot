@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.57.4](https://github.com/smykla-skalski/smyklot/compare/v1.57.3...v1.57.4) (2026-10-19)
+
+### Bug Fixes
+
+* **webhook:** keep commands fast during CI bursts ([#450](https://github.com/smykla-skalski/smyklot/issues/450)) ([80e51fc](https://github.com/smykla-skalski/smyklot/commit/80e51fc6bcf92632bc6ed6724b6df680c6454d27))
+
 ## [1.57.3](https://github.com/smykla-skalski/smyklot/compare/v1.57.2...v1.57.3) (2026-10-16)
 
 ### Bug Fixes
