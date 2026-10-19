@@ -90,7 +90,7 @@ jobs:
         run: mise run test:service:shard sqlite ${{ matrix.shard }}
       - name: Save service timing reports
         if: always() && matrix.shard
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: service-sqlite-${{ matrix.shard }}-timings
           path: tmp/service-sqlite/shard-${{ matrix.shard }}/*.json
@@ -118,7 +118,7 @@ jobs:
         run: mise run test:storage:shard ${{ matrix.shard }}
       - name: Save SQLite timing reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sqlite-${{ matrix.shard }}-timings
           path: tmp/storage/shard-${{ matrix.shard }}/*.json
@@ -195,7 +195,7 @@ jobs:
 
       - name: Save service timing reports
         if: always() && matrix.shard
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: service-postgres-${{ matrix.shard }}-timings
           path: tmp/service-postgres/shard-${{ matrix.shard }}/*.json
