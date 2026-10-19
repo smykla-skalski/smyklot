@@ -22,16 +22,6 @@
   "minimumReleaseAgeBehaviour": "timestamp-required",
   "packageRules": [
     {
-      "description": "Exclude Bits UI 2.19.5 because its focus scope truncates edits in the shadow-root editor",
-      "matchPackageNames": ["bits-ui"],
-      "allowedVersions": "!/^2\\.19\\.5$/"
-    },
-    {
-      "description": "Keep Storybook packages and their addon peer dependencies compatible",
-      "matchPackageNames": ["storybook", "@storybook/*"],
-      "groupName": "Storybook"
-    },
-    {
       "description": "Automerge updates with a verified release age of at least seven days",
       "matchUpdateTypes": ["major", "minor", "patch", "digest"],
       "minimumReleaseAge": "7 days",
