@@ -6,10 +6,10 @@ node = "24.21.0"
 "npm:markdownlint-cli2" = { version = "0.23.3", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.33.0"
 actionlint = "1.7.12"
-golangci-lint = "2.13.2"
+golangci-lint = "2.14.0"
 helm = "4.3.0"
 shellcheck = "0.11.0"
-yq = "4.53.6"
+yq = "4.54.1"
 
 [env]
 GO111MODULE = "on"
@@ -448,6 +448,11 @@ run = "./scripts/install-panel-frontend.sh"
 [tasks."test:panel-install"]
 description = "Test panel dependency cache restoration"
 run = "./scripts/test-install-panel-frontend.sh"
+
+[tasks."panel:frontend:lock"]
+description = "Update the panel dependency lockfile without install scripts"
+dir = "internal/panel/frontend"
+run = "npm update --package-lock-only --ignore-scripts --no-audit --no-fund"
 
 [tasks."panel:frontend:build"]
 description = "Build the panel frontend"

@@ -870,7 +870,7 @@ describe('configured file formatting in the development panel', () => {
         await editor.fill(edited);
         const undo = inspector.getByRole('button', { name: 'Undo', exact: true });
         await undo.waitFor();
-        expect(await inspector.getByRole('alert').count()).toBe(0);
+        expect(await inspector.getByRole('alert').allTextContents()).toEqual([]);
         const mounted = await editor.elementHandle();
 
         for (const width of [1440, 375]) {
