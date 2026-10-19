@@ -1,7 +1,7 @@
 # mise configuration - pinned tools and native repository workflows
 
 [tools]
-go = "1.27.1"
+go = "1.27.2"
 node = "24.21.0"
 "npm:markdownlint-cli2" = { version = "0.23.3", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.33.0"
