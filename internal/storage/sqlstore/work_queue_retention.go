@@ -11,6 +11,8 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
+const retentionBatchSize = 1000
+
 func (s *Store) PruneWorkQueue(ctx context.Context, now time.Time) (int64, error) {
 	scopes, err := s.queueRetentionScopes(ctx)
 	if err != nil {
@@ -78,17 +80,19 @@ func (s *Store) pruneQueueRetentionScope(
 	scope queueRetentionScope,
 	cutoff time.Time,
 ) (int64, error) {
-	query := `DELETE FROM queue_items
-WHERE kind = ? AND target_id IS NULL
+	query := `DELETE FROM queue_items WHERE id IN (
+SELECT id FROM queue_items WHERE kind = ? AND target_id IS NULL
   AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')
-  AND finished_at IS NOT NULL AND finished_at <= ?`
-	arguments := []any{scope.kind, cutoff}
+  AND finished_at IS NOT NULL AND finished_at <= ?
+ORDER BY finished_at, id LIMIT ?)`
+	arguments := []any{scope.kind, cutoff, retentionBatchSize}
 	if scope.targetID != nil {
-		query = `DELETE FROM queue_items
-WHERE kind = ? AND target_id = ?
+		query = `DELETE FROM queue_items WHERE id IN (
+SELECT id FROM queue_items WHERE kind = ? AND target_id = ?
   AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')
-  AND finished_at IS NOT NULL AND finished_at <= ?`
-		arguments = []any{scope.kind, *scope.targetID, cutoff}
+  AND finished_at IS NOT NULL AND finished_at <= ?
+ORDER BY finished_at, id LIMIT ?)`
+		arguments = []any{scope.kind, *scope.targetID, cutoff, retentionBatchSize}
 	}
 	result, err := s.db.ExecContext(ctx, query, arguments...)
 	if err != nil {

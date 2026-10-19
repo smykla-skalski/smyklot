@@ -67,8 +67,8 @@ func TestEveryKindIsBounded(t *testing.T) {
 	if Retention(KindReactionScan) != RoutineRetention {
 		t.Fatal("a repository sweep is kept as long as work somebody asked for")
 	}
-	if Retention(KindWebhookDelivery) != EventRetention {
-		t.Fatal("a delivery is kept as briefly as a repository sweep")
+	if Retention(KindWebhookDelivery) != 7*24*time.Hour {
+		t.Fatal("webhook history must expire after seven days")
 	}
 
 	policies := DeploymentPolicies(DeploymentDefaults{

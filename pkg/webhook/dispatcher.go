@@ -178,6 +178,7 @@ func (p *Pipeline) finalize(
 	err := write(finalizeCtx)
 	cancel()
 	if err == nil {
+		p.wake()
 		p.opts.finalized(delivery, outcome)
 
 		return
@@ -217,6 +218,7 @@ func (p *Pipeline) retryFinalization(
 			err := write(attemptCtx)
 			cancel()
 			if err == nil {
+				p.wake()
 				delivery.Logger.Info("delivery outcome persisted after retry",
 					"outcome", string(outcome), "attempts", attempts)
 				p.opts.finalized(delivery, outcome)

@@ -87,11 +87,39 @@ func (checks *Checks) EnsureBaseline(
 	pullRequest int,
 	headSHA string,
 ) (pendingci.CheckSlot, error) {
-	return checks.ensure(ctx, target, repository, pullRequest, headSHA, checkDesired{
+	return checks.ensure(ctx, target, repository, pullRequest, headSHA, baselineDesired())
+}
+
+func baselineDesired() checkDesired {
+	return checkDesired{
 		Status: checkCompleted, Conclusion: checkSuccess,
 		Title:   "Merge after CI is ready",
 		Summary: "No merge-after-CI request is currently authorized for this commit.",
-	})
+	}
+}
+
+func (checks *Checks) baselineCurrent(ctx context.Context, repositoryID string, pullRequest int, headSHA string) (bool, error) {
+	if headSHA == "" {
+		return false, nil
+	}
+	slot, err := checks.store.GetCheckSlotByHead(ctx, repositoryID, headSHA)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	appID, err := checks.AppID(ctx)
+	if err != nil {
+		return false, err
+	}
+	digest, err := checkDigest(baselineDesired())
+	if err != nil {
+		return false, err
+	}
+	return slot.PullRequest == pullRequest && slot.AppID == appID && slot.CheckRunID != nil &&
+		slot.State == pendingci.CheckSlotReady && slot.DesiredDigest == digest &&
+		slot.AppliedDigest == digest && !checkNeedsRenewal(slot, checks.now()), nil
 }
 
 func (checks *Checks) EnsureAuthorized(

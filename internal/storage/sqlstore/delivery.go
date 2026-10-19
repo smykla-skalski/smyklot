@@ -29,7 +29,7 @@ func (s *Store) LeaseDelivery(
 
 	work, choice, err := s.selectReadyDelivery(ctx, tx, now)
 	if errors.Is(err, sql.ErrNoRows) {
-		availableAt, availableErr := nextDeliveryAvailability(ctx, tx)
+		availableAt, availableErr := nextDeliveryAvailability(ctx, tx, now)
 		if availableErr != nil {
 			return storage.DeliveryLeaseResult{}, availableErr
 		}
@@ -107,7 +107,7 @@ SELECT id, claim_key, delivery_id, target_id, repository_id,
 FROM deliveries
 WHERE id = ? AND status = ? AND payload IS NOT NULL
   AND next_attempt_at <= ?
-	AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+	AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`+s.dialect.RowLock(),
 		choice.item.SourceID,
 		storage.DeliveryRunning,
 		now,
@@ -134,11 +134,14 @@ WHERE id = ? AND status = ? AND payload IS NOT NULL
 	if repositoryID.Valid {
 		work.RepositoryID = &repositoryID.String
 	}
+	if err := s.lockDispatchChoice(ctx, tx, choice); err != nil {
+		return storage.DeliveryWork{}, queueDispatchChoice{}, err
+	}
 
 	return work, choice, nil
 }
 
-func nextDeliveryAvailability(ctx context.Context, tx *transaction) (*time.Time, error) {
+func nextDeliveryAvailability(ctx context.Context, tx *transaction, now time.Time) (*time.Time, error) {
 	var available StoredTime
 	err := tx.QueryRowContext(ctx, `
 SELECT MIN(
@@ -149,7 +152,12 @@ SELECT MIN(
     END
 )
 FROM deliveries
-WHERE status = ? AND payload IS NOT NULL`, storage.DeliveryRunning).Scan(&available)
+WHERE status = ? AND payload IS NOT NULL
+  AND (lease_expires_at > ? OR NOT EXISTS (
+    SELECT 1 FROM deliveries busy
+    WHERE busy.repository_id = deliveries.repository_id
+      AND busy.status = 'running' AND busy.lease_expires_at > ?
+  ))`, storage.DeliveryRunning, now, now).Scan(&available)
 	if err != nil {
 		return nil, fmt.Errorf("read next delivery availability: %w", err)
 	}
@@ -397,13 +405,33 @@ func failureFilters(
 	return clauses, arguments
 }
 
-// PruneDeliveries applies retention only to finished deliveries. Running work
-// is never discarded.
+// PruneDeliveries removes one bounded batch of expired terminal deliveries.
+// Repeated maintenance passes clear a backlog without one large write transaction.
 func (s *Store) PruneDeliveries(ctx context.Context, finishedBefore time.Time) error {
 	if _, err := s.db.ExecContext(ctx, `
 DELETE FROM deliveries
-WHERE finished_at IS NOT NULL AND finished_at < ?`, finishedBefore); err != nil {
+WHERE id IN (
+    SELECT id FROM deliveries
+    WHERE finished_at IS NOT NULL AND finished_at < ?
+    ORDER BY finished_at, id LIMIT ?
+)`, finishedBefore, retentionBatchSize); err != nil {
 		return fmt.Errorf("prune deliveries: %w", err)
+	}
+
+	return nil
+}
+
+// PruneDeliveryPayloads retains deduplication and outcomes after successful
+// payloads expire. Failed payloads remain available for explicit recovery.
+func (s *Store) PruneDeliveryPayloads(ctx context.Context, finishedBefore time.Time) error {
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE deliveries SET payload = NULL
+WHERE id IN (
+    SELECT id FROM deliveries
+    WHERE status = 'succeeded' AND finished_at < ? AND payload IS NOT NULL
+    ORDER BY finished_at, id LIMIT ?
+)`, finishedBefore, retentionBatchSize); err != nil {
+		return fmt.Errorf("prune delivery payloads: %w", err)
 	}
 
 	return nil

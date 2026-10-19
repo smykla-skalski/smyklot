@@ -38,6 +38,9 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 			if err := s.store.ExpireSyncPlans(ctx, now); err != nil {
 				return err
 			}
+			if err := s.store.PruneDeliveryPayloads(ctx, now.Add(-workqueue.DeliveryPayloadRetention)); err != nil {
+				return err
+			}
 			policy, err := s.store.GetEffectiveQueuePolicy(
 				ctx, workqueue.KindWebhookDelivery, nil,
 			)

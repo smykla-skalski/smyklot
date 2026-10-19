@@ -680,6 +680,10 @@ fly ssh console --app smyklot-db --command "psql -U smyklot -d smyklot -c '\\dt'
 
 The service opens at most 16 connections against a limit of 50, so there is room for a session at the prompt while it runs.
 
+**Retention.** Webhook history expires after seven days by default. Successful webhook payloads expire after 24 hours, while failed payloads remain available for recovery until their history expires. Routine queue history expires after 48 hours, and queue events expire with their queue records. Root queue policies can change the history retention period. Accepted sync receipts, retained sync results, and audit records keep their separate lifetimes. Each cleanup pass removes at most 1,000 delivery records, 1,000 successful payloads, and 1,000 queue records per workload and workspace.
+
+**Bulk cleanup.** Verify a backup and sufficient free disk space before cleanup. PostgreSQL needs free space for its write-ahead log (WAL), even when a delete removes many records. Small transactions limit lock time, but their total WAL can still fill a disk. Avoid repeated forced checkpoints because subsequent writes can create more full-page WAL records. Use normal `VACUUM` after cleanup to make empty space available for reuse. Fly volumes cannot shrink, so a return to a smaller volume requires a new volume, a database transfer, and a verified cutover.
+
 **The service will not start.** Its migrations run on startup, so an unreachable or unmigratable database means the machine never becomes ready. `fly logs --app smyklot` names which; check `fly status --app smyklot-db` first.
 
 **Sizing.** 512MB, `shared_buffers=96MB`, `max_connections=50`. 256MB is the cheaper size and is not enough - shared buffers plus the backends plus the postmaster sit close enough to it that a checkpoint under load ends in the OOM killer.
