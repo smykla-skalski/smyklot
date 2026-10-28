@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.57.5](https://github.com/smykla-skalski/smyklot/compare/v1.57.4...v1.57.5) (2026-10-28)
+
+### Bug Fixes
+
+* **config:** keep commands available during file sync setup ([#475](https://github.com/smykla-skalski/smyklot/issues/475)) ([c142a5c](https://github.com/smykla-skalski/smyklot/commit/c142a5cb7291c16eae7bddda3b16d5ded6a2ccf8))
+* **deps:** update dependency @codemirror/legacy-modes to v6.5.5 ([#460](https://github.com/smykla-skalski/smyklot/issues/460)) ([1d8cb64](https://github.com/smykla-skalski/smyklot/commit/1d8cb6402c9d8eb63661298e4ab2a0c672e6ddc2))
+* **deps:** update ginkgo to v2.33.1 ([#461](https://github.com/smykla-skalski/smyklot/issues/461)) ([1a74198](https://github.com/smykla-skalski/smyklot/commit/1a74198df6be6ee11a62eb5dbf2122ec994aa33c))
+* **deps:** update module github.com/prometheus/client_golang to v1.25.0 ([#466](https://github.com/smykla-skalski/smyklot/issues/466)) ([7490b8f](https://github.com/smykla-skalski/smyklot/commit/7490b8f1d00025862ec39a98fa989fcd0b27ba80))
+* **panel:** pin Storybook Svelte peer for lock updates ([#478](https://github.com/smykla-skalski/smyklot/issues/478)) ([621ded6](https://github.com/smykla-skalski/smyklot/commit/621ded68b954ed1763905a1a534b840adf20031a))
+
 ## [1.57.4](https://github.com/smykla-skalski/smyklot/compare/v1.57.3...v1.57.4) (2026-10-19)
 
 ### Bug Fixes
