@@ -240,6 +240,10 @@ func (s *server) serviceConfigWithControls(
 	if err != nil {
 		return nil, err
 	}
+	file, connected, err := s.prepareConnectedConfig(ctx, client, targetID, repository, owner, repositoryName, file)
+	if err != nil {
+		return nil, err
+	}
 	var fileError *string
 	if file.err != nil {
 		reason := s.redactor.Error(file.err)
@@ -264,20 +268,16 @@ func (s *server) serviceConfigWithControls(
 	if file.err != nil && !repository.IgnoreRepositoryFile {
 		return nil, file.err
 	}
-	if repository.ConfigFileSyncEnabled && !repository.IgnoreRepositoryFile {
-		if err := s.requireConfigurationFileBaseline(ctx, targetID, repositoryID); err != nil {
-			return nil, err
-		}
-	}
-
 	layers := []config.Layer{{Source: config.SourceTarget, Patch: target.ConfigPatch}}
 	if !repository.IgnoreRepositoryFile {
 		filePatch := file.patch
-		if repository.ConfigFileSyncEnabled {
+		if connected {
 			// File edits become active only after reconciliation imports them.
 			// Runner is deliberately file-owned and cannot be set by the panel.
 			filePatch = config.Patch{Runner: file.patch.Runner}
 		}
+		// Until the first reconciliation, preserve the pre-connection precedence
+		// so that enabling sync does not discard file-owned restrictions.
 		layers = append(layers, config.Layer{
 			Source: config.SourceRepositoryFile,
 			Patch:  filePatch,
@@ -290,4 +290,19 @@ func (s *server) serviceConfigWithControls(
 	resolved := config.Resolve(s.botConfig(), layers...)
 
 	return &resolved.Values, nil
+}
+
+func (s *server) prepareConnectedConfig(
+	ctx context.Context, client *github.Client, targetID string, repository storage.Repository,
+	owner, name string, file repositoryConfigFile,
+) (repositoryConfigFile, bool, error) {
+	if !repository.ConfigFileSyncEnabled || repository.IgnoreRepositoryFile {
+		return file, false, nil
+	}
+	ready, err := s.configurationFileBaselineReady(ctx, targetID, repository.ID)
+	if err != nil || ready {
+		return file, ready, err
+	}
+	file, err = s.configs.load(ctx, client, owner, name, &file)
+	return file, false, err
 }
