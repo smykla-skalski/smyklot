@@ -236,6 +236,106 @@ func TestConfigFileInitializationCannotRelaxCommands(t *testing.T) {
 	}
 }
 
+func TestConfigFileInitializationPreservesPriorPrecedence(t *testing.T) {
+	t.Parallel()
+	fileCommands := []string{"approve"}
+	panelPrefix := "/panel "
+	for _, connected := range []bool{false, true} {
+		t.Run(map[bool]string{false: "before activation", true: "activation pending"}[connected], func(t *testing.T) {
+			store := configurationRuntimeStore{maintenanceCatalogStore: maintenanceCatalogStore{
+				target: storage.Target{ID: "target", Available: true},
+				repositories: []storage.Repository{{
+					ID: "repo", TargetID: "target", Available: true, ConfigFileSyncEnabled: connected,
+					ConfigPatch: config.Patch{CommandPrefix: &panelPrefix},
+				}},
+			}}
+			store.connection.InitializationRequired = true
+			service := &server{
+				store: store, panel: &adminpanel.Server{}, runtimeBotConfig: config.Default(),
+				configs: newRepoCache(time.Minute, func(context.Context, *github.Client, string, string, *repositoryConfigFile) (repositoryConfigFile, error) {
+					return repositoryConfigFile{status: storage.RepositoryFileValid, patch: config.Patch{AllowedCommands: &fileCommands}}, nil
+				}),
+			}
+			resolved, err := service.serviceConfigWithoutCatalogRefresh(t.Context(), nil, "target", "repo", "owner", "repo")
+			if err != nil || resolved == nil || resolved.CommandPrefix != panelPrefix || !slices.Equal(resolved.AllowedCommands, fileCommands) {
+				t.Fatalf("configuration changed on activation: %#v, %v", resolved, err)
+			}
+		})
+	}
+}
+
+type missingConfigCase struct {
+	name       string
+	refreshed  repositoryConfigFile
+	loadErr    error
+	priorBase  bool
+	wantActive bool
+}
+
+func TestConfigFileInitializationWithMissingFile(t *testing.T) {
+	t.Parallel()
+	for _, test := range []missingConfigCase{
+		{name: "missing file keeps commands available", refreshed: repositoryConfigFile{status: storage.RepositoryFileMissing}, wantActive: true},
+		{name: "new file keeps commands available", refreshed: repositoryConfigFile{status: storage.RepositoryFileValid}, wantActive: true},
+		{name: "unreadable file fails closed", loadErr: errors.New("unavailable")},
+		{name: "invalid file fails closed", refreshed: repositoryConfigFile{status: storage.RepositoryFileInvalid, err: errors.New("invalid")}},
+		{name: "removed file after reconnect keeps commands available", refreshed: repositoryConfigFile{status: storage.RepositoryFileMissing}, priorBase: true, wantActive: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			testMissingConfigInitialization(t, test)
+		})
+	}
+}
+
+func testMissingConfigInitialization(t *testing.T, test missingConfigCase) {
+	t.Helper()
+	store := configurationRuntimeStore{maintenanceCatalogStore: maintenanceCatalogStore{
+		target:       storage.Target{ID: "target", Available: true},
+		repositories: []storage.Repository{{ID: "repo", TargetID: "target", Available: true, ConfigFileSyncEnabled: true}},
+	}}
+	store.connection.InitializationRequired = true
+	if test.priorBase {
+		allowed := []string{"approve"}
+		store.repositories[0].ConfigPatch.AllowedCommands = &allowed
+		baseline, err := (configsync.PanelSnapshot{Target: store.target, Repository: &store.repositories[0]}).JSON()
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.connection.Document, err = json.Marshal(configsync.Connection{
+			Version: 1, Status: configsync.StatusReady,
+			Base: configsync.Snapshot{Exists: true, Document: baseline},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	reads := 0
+	service := &server{
+		store: store, panel: &adminpanel.Server{}, runtimeBotConfig: config.Default(),
+		configs: newRepoCache(time.Minute, func(_ context.Context, _ *github.Client, _, _ string, _ *repositoryConfigFile) (repositoryConfigFile, error) {
+			reads++
+			if reads == 1 {
+				return repositoryConfigFile{status: storage.RepositoryFileMissing}, nil
+			}
+			return test.refreshed, test.loadErr
+		}),
+	}
+	resolved, err := service.serviceConfigWithoutCatalogRefresh(t.Context(), nil, "target", "repo", "owner", "repo")
+	if test.wantActive {
+		if err != nil || resolved == nil || resolved.CommandPrefix != config.Default().CommandPrefix {
+			t.Fatalf("missing file blocked commands: %#v, %v", resolved, err)
+		}
+		if test.priorBase && !slices.Equal(resolved.AllowedCommands, []string{"approve"}) {
+			t.Fatalf("reconnection lost saved command restrictions: %v", resolved.AllowedCommands)
+		}
+	} else if err == nil || resolved != nil {
+		t.Fatalf("unsafe initialization activated settings: %#v, %v", resolved, err)
+	}
+	if reads != 2 {
+		t.Fatalf("configuration reads = %d, want fresh verification of missing file", reads)
+	}
+}
+
 func testConfigFileInitialization(t *testing.T, reconnect bool) {
 	t.Helper()
 	allowed := []string{"approve"}
@@ -264,7 +364,7 @@ func testConfigFileInitialization(t *testing.T, reconnect bool) {
 		}),
 	}
 	resolved, err := service.serviceConfigWithoutCatalogRefresh(t.Context(), nil, "target", "repo", "owner", "repo")
-	if err == nil || resolved != nil {
-		t.Fatalf("uninitialized connection activated settings: %#v, %v", resolved, err)
+	if err != nil || resolved == nil || !slices.Equal(resolved.AllowedCommands, allowed) {
+		t.Fatalf("uninitialized connection lost file restrictions: %#v, %v", resolved, err)
 	}
 }

@@ -91,22 +91,16 @@ func (s *server) configurationFileEnabled(ctx context.Context, targetID, reposit
 	return repository.Available && repository.ConfigFileSyncEnabled, err
 }
 
-func (s *server) requireConfigurationFileBaseline(ctx context.Context, targetID, repositoryID string) error {
+func (s *server) configurationFileBaselineReady(ctx context.Context, targetID, repositoryID string) (bool, error) {
 	stored, err := s.store.GetConfigFileState(ctx, targetID, repositoryID)
 	if err != nil {
-		return bot.NewConfigError(bot.ErrConfigLoad, err)
+		return false, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
 	connection, err := configsync.DecodeConnection(stored, config.PanelFileRepository)
 	if err != nil {
-		return bot.NewConfigError(bot.ErrConfigLoad, err)
+		return false, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
-	if stored.InitializationRequired || !connection.Base.Exists {
-		// Opting in must not drop file-owned restrictions before those settings
-		// have been imported or their initial conflict has been resolved.
-		return bot.NewConfigError(bot.ErrConfigLoad,
-			errors.New("configuration file sync is waiting for successful reconciliation after being enabled"))
-	}
-	return nil
+	return !stored.InitializationRequired && connection.Base.Exists, nil
 }
 
 // Workspace imports can change settings for every repository. Acquire the same
