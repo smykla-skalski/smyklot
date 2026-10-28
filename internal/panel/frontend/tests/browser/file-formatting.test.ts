@@ -576,7 +576,9 @@ describe('configured file formatting in the development panel', () => {
       );
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       const save = await saved;
-      expect(save.ok(), await save.text()).toBe(true);
+      const saveBody = await save.text();
+      expect(save.ok(), saveBody).toBe(true);
+      const checkpointId = (JSON.parse(saveBody) as WorkspaceSettingsBatchResponse).checkpoint_id;
       expect(save.request().postData()).toContain('"id":-1e400');
       const readback = await page.request.get(overrideUrl);
       const body = await readback.text();
@@ -602,7 +604,6 @@ describe('configured file formatting in the development panel', () => {
           });
         }
       }
-      const checkpointId = ((await save.json()) as WorkspaceSettingsBatchResponse).checkpoint_id;
       expect(checkpointId).toBeDefined();
       const checkpointUrl = `${panel.origin}/api/v1/targets/2001/settings/checkpoints/${checkpointId}`;
       const checkpoint = (await (
