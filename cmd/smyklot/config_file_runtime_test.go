@@ -280,6 +280,9 @@ func TestConfigFileInitializationWithMissingFile(t *testing.T) {
 		{name: "unreadable file fails closed", loadErr: errors.New("unavailable")},
 		{name: "invalid file fails closed", refreshed: repositoryConfigFile{status: storage.RepositoryFileInvalid, err: errors.New("invalid")}},
 		{name: "removed file after reconnect keeps commands available", refreshed: repositoryConfigFile{status: storage.RepositoryFileMissing}, priorBase: true, wantActive: true},
+		{name: "changed file after reconnect keeps saved restrictions", refreshed: repositoryConfigFile{
+			status: storage.RepositoryFileValid, patch: config.Patch{AllowedCommands: &[]string{"approve", "merge"}},
+		}, priorBase: true, wantActive: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			testMissingConfigInitialization(t, test)
