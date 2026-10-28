@@ -61,7 +61,7 @@
     "@codemirror/view": "^6.43.9",
     "@lezer/highlight": "^1.2.3",
     "@tanstack/svelte-query": "^6.1.38",
-    "bits-ui": "2.19.4",
+    "bits-ui": "2.20.0",
     "jsonc-parser": "^3.3.1",
     "layerchart": "^2.4.0",
     "runed": "^0.37.1"

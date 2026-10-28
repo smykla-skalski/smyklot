@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncRulesetPage from '../src/lib/components/SyncRulesetPage.svelte';
@@ -510,9 +510,12 @@ describe('the ruleset pages [Component]', () => {
     await fireEvent.click(screen.getByRole('button', { name: /Add a rule/ }));
     await fireEvent.click(screen.getByRole('button', { name: 'Require a pull request' }));
     expect(sent).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(1));
     await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(sent).not.toHaveBeenCalled();
-    expect(screen.queryByText('Approvals required', { exact: true })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByText('Approvals required', { exact: true })).toBeNull(),
+    );
   });
 
   it('makes an open editor read only when write permission is removed', async () => {
@@ -564,7 +567,9 @@ describe('the ruleset pages [Component]', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     await rendered.rerender({ name: 'second' });
-    expect(screen.queryByText('Approvals required', { exact: true })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByText('Approvals required', { exact: true })).toBeNull(),
+    );
     expect(sent).not.toHaveBeenCalled();
   });
 
@@ -812,7 +817,7 @@ describe('the ruleset pages [Component]', () => {
       expect((input as HTMLInputElement).value).toBe(value);
       await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
       await fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
-      expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Done' })).toBeNull());
       expect(sent).not.toHaveBeenCalled();
     },
   );
@@ -831,7 +836,7 @@ describe('the ruleset pages [Component]', () => {
         await fireEvent.input(input, { target: { value: '1' } });
       }
       await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
-      expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Done' })).toBeNull());
       expect(screen.queryByRole('dialog', { name: 'Discard rule changes?' })).toBeNull();
     }
   });
@@ -851,8 +856,10 @@ describe('the ruleset pages [Component]', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
     expect(screen.getByRole('dialog', { name: 'Discard rule changes?' })).toBeTruthy();
     await rendered.rerender({ name: 'another-ruleset' });
-    expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull(),
+    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Done' })).toBeNull());
     expect(sent).not.toHaveBeenCalled();
   });
   it.each(['changed', 'removed', 'created'] as const)(
@@ -987,6 +994,6 @@ describe('the ruleset pages [Component]', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(stage).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Done' })).toBeNull());
   });
 });
