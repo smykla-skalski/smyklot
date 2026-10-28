@@ -75,14 +75,8 @@ func (snapshot PanelSnapshot) Document() (config.FileDocument, error) {
 			QuietPeriod:              fileDuration(target.PendingCIQuietPeriodOverride),
 			FileIndexInterval:        fileDuration(target.PathIndexIntervalOverride),
 		}
-		for _, item := range snapshot.SyncConfigs {
-			if item.TargetID != target.ID || !item.Kind.Valid() {
-				return config.FileDocument{}, errors.New("sync configuration scope mismatch")
-			}
-			if _, exists := section.Sync[string(item.Kind)]; exists {
-				return config.FileDocument{}, errors.New("duplicate sync configuration")
-			}
-			section.Sync[string(item.Kind)] = config.PanelFileSync{Enabled: new(item.Enabled), Document: slices.Clone(item.Document)}
+		if err := snapshot.addSyncConfigs(section); err != nil {
+			return config.FileDocument{}, err
 		}
 	} else {
 		repository := *snapshot.Repository
@@ -97,22 +91,42 @@ func (snapshot PanelSnapshot) Document() (config.FileDocument, error) {
 			QuietPeriod:       fileDuration(repository.PendingCIQuietPeriodOverride),
 			FileIndexInterval: fileDuration(repository.PathIndexIntervalOverride),
 		}
-		for _, item := range snapshot.SyncOverrides {
-			if item.RepositoryID != repository.ID || !item.Kind.Valid() {
-				return config.FileDocument{}, errors.New("sync override scope mismatch")
-			}
-			if _, exists := section.Sync[string(item.Kind)]; exists {
-				return config.FileDocument{}, errors.New("duplicate sync override")
-			}
-			content := slices.Clone(item.Document)
-			if len(bytes.TrimSpace(content)) == 0 {
-				content = []byte("{}")
-			}
-			section.Sync[string(item.Kind)] = config.PanelFileSync{Enabled: item.Enabled, Document: content}
+		if err := snapshot.addSyncOverrides(section, repository.ID); err != nil {
+			return config.FileDocument{}, err
 		}
 	}
 	document.Runner = nil
 	return document, validateFileSyncShapes(document.Panel)
+}
+
+func (snapshot PanelSnapshot) addSyncConfigs(section *config.PanelFileSection) error {
+	for _, item := range snapshot.SyncConfigs {
+		if item.TargetID != snapshot.Target.ID || !item.Kind.Valid() {
+			return errors.New("sync configuration scope mismatch")
+		}
+		if _, exists := section.Sync[string(item.Kind)]; exists {
+			return errors.New("duplicate sync configuration")
+		}
+		section.Sync[string(item.Kind)] = config.PanelFileSync{Enabled: new(item.Enabled), Document: slices.Clone(item.Document)}
+	}
+	return nil
+}
+
+func (snapshot PanelSnapshot) addSyncOverrides(section *config.PanelFileSection, repositoryID string) error {
+	for _, item := range snapshot.SyncOverrides {
+		if item.RepositoryID != repositoryID || !item.Kind.Valid() {
+			return errors.New("sync override scope mismatch")
+		}
+		if _, exists := section.Sync[string(item.Kind)]; exists {
+			return errors.New("duplicate sync override")
+		}
+		content := slices.Clone(item.Document)
+		if len(bytes.TrimSpace(content)) == 0 {
+			content = []byte("{}")
+		}
+		section.Sync[string(item.Kind)] = config.PanelFileSync{Enabled: item.Enabled, Document: content}
+	}
+	return nil
 }
 
 func (snapshot PanelSnapshot) JSON() ([]byte, error) {
