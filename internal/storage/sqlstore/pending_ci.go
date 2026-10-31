@@ -822,11 +822,13 @@ WHERE id = ? AND revision = ? AND lifecycle = 'armed'
 	if err := recordPendingCIEvent(ctx, tx, event); err != nil {
 		return nil, err
 	}
+	applyReauthorization(&request, change)
+	if err := syncPendingCIQueue(ctx, tx, request); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit pending CI reauthorization: %w", err)
 	}
-
-	applyReauthorization(&request, change)
 
 	return &request, nil
 }
