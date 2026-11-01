@@ -13,6 +13,8 @@ The rule "a new head never inherits the old authorization" becomes "after a push
 
 The replacement is written in `findings/merge-after-ci-2026-11-01-push-keeps-authorization.md`.
 
+The scenario "Push after the command" of the 2026-10-31 finding showed the old rule: a click after an ordinary push. Its executable form is retired, so the 2026-10-31 signature no longer covers that file. The surviving rule of that finding, a click on a waiting request is reconciled within 5 seconds, is shown by steps 6 and 7 of "Push after the person lost permission" in the new finding, and the 2026-11-01 signature is the one that holds.
+
 ## Reason
 
 Bart said on 2026-11-01: "when there is something being pushed after to this approved branch, the approval from the bot is lost, it has to reapprove it instead of waiting for confirmation for authorization". GitHub already drops the bot's approval on a push in his repositories, and the click only repeats what the command already said.

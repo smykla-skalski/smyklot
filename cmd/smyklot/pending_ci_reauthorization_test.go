@@ -25,10 +25,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// The scenario "Push after the command" from
-// .dogvane/findings/merge-after-ci-2026-10-31-reauthorize-waits.md, one step
-// helper per sentence. The bounds are the scenario's; only the quiet period is
-// shortened so the spec runs in seconds.
 const (
 	scenarioQuietPeriod   = 2 * time.Second
 	scenarioNoMergeWait   = 10 * time.Second
@@ -41,20 +37,6 @@ const (
 	scenarioFirstSHA = "head-after-command"
 	scenarioPushSHA  = "head-after-push"
 )
-
-var _ = Describe("Push after the command [Unit]", func() {
-	It("merges only after a person reauthorizes, and reconciles within five seconds of that", func() {
-		s := startScenarioService()
-
-		s.writeSquashAfterCI()
-		s.pushOneMoreCommit()
-		s.waitUntilCIIsGreen()
-		s.waitTenSecondsWithoutMerge()
-		authorizedAt := s.clickReauthorize()
-		s.expectReconciliationWithin(scenarioReconcileWait, authorizedAt)
-		s.expectMergeWithin(scenarioQuietPeriod + scenarioMergeSlack)
-	})
-})
 
 type scenarioService struct {
 	server  *server
@@ -147,7 +129,6 @@ func enableChecksMode(service *server) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-// Step 1: on a pull request, write the command "squash after ci".
 func (s *scenarioService) writeSquashAfterCI() {
 	GinkgoHelper()
 	s.deliver(webhook.EventIssueComment, commandDelivery("/squash after ci"))
@@ -162,20 +143,6 @@ func (s *scenarioService) writeSquashAfterCI() {
 	}).Within(scenarioSetupWindow).Should(Succeed(), "the command must arm a merge-after-CI request")
 }
 
-// Step 2: push one more commit to the pull request.
-func (s *scenarioService) pushOneMoreCommit() {
-	GinkgoHelper()
-	s.stub.prHead = scenarioPushSHA
-	s.deliver(webhook.EventPullRequest, scenarioPullRequestSynchronize(scenarioPushSHA))
-	Eventually(func(g Gomega) {
-		run, found := s.checks.smyklotRun(scenarioPushSHA)
-		g.Expect(found).To(BeTrue(), "the Smyklot check must appear on the new head")
-		g.Expect(run.conclusion).To(Equal("action_required"))
-		g.Expect(run.actions).To(ContainElement(gate.ReauthorizeAction))
-	}).Within(scenarioSetupWindow).Should(Succeed(), "the new head must ask for reauthorization")
-}
-
-// Step 3: wait until all CI checks are green.
 func (s *scenarioService) waitUntilCIIsGreen() {
 	GinkgoHelper()
 	run := s.checks.add(scenarioCheckRun{
@@ -186,15 +153,6 @@ func (s *scenarioService) waitUntilCIIsGreen() {
 	s.deliver(webhook.EventCheckSuite, scenarioCheckCompleted("check_suite", run))
 }
 
-// Step 4: wait 10 more seconds. Smyklot must not merge.
-func (s *scenarioService) waitTenSecondsWithoutMerge() {
-	GinkgoHelper()
-	Consistently(func() int {
-		return s.stub.countCalls(http.MethodPut, "/merge")
-	}, scenarioNoMergeWait).Should(BeZero(), "a pushed head must not merge on the old authorization")
-}
-
-// Step 5: click Reauthorize on the Smyklot check.
 func (s *scenarioService) clickReauthorize() time.Time {
 	GinkgoHelper()
 	run, found := s.checks.smyklotRun(scenarioPushSHA)
@@ -215,7 +173,6 @@ func (s *scenarioService) clickReauthorize() time.Time {
 	return authorized.AuthorizedAt
 }
 
-// Step 6: within 5 seconds, Smyklot must record a reconciliation of the request.
 func (s *scenarioService) expectReconciliationWithin(bound time.Duration, authorizedAt time.Time) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
@@ -232,8 +189,6 @@ func (s *scenarioService) expectReconciliationWithin(bound time.Duration, author
 		"the reauthorized request must be reconciled within five seconds, not on the next fallback check")
 }
 
-// Step 7: wait for the quiet period and 5 more seconds. Smyklot must merge the
-// pull request.
 func (s *scenarioService) expectMergeWithin(bound time.Duration) {
 	GinkgoHelper()
 	Eventually(func() int {
@@ -246,15 +201,6 @@ func (s *scenarioService) deliver(event string, body []byte) {
 	GinkgoHelper()
 	s.next++
 	deliverAccepted(s.public, s.stub, event, "scenario-delivery-"+strconv.Itoa(s.next), body)
-}
-
-func scenarioPullRequestSynchronize(head string) []byte {
-	return fmt.Appendf(nil, `{
-  "action": "synchronize", "number": 42,
-  "pull_request": {"merged": false, "updated_at": "2026-10-31T12:00:00Z", "head": {"sha": %q}},
-  "repository": {"id": 123456, "name": "smyklot", "full_name": "smykla-skalski/smyklot", "owner": {"login": "smykla-skalski"}},
-  "installation": {"id": 987}
-}`, head)
 }
 
 func scenarioCheckCompleted(subject string, run scenarioCheckRun) []byte {
