@@ -301,6 +301,14 @@ type ReauthorizeRequest struct {
 	AuthorizedAt time.Time
 }
 
+type CarryAuthorizationRequest struct {
+	ID               int64
+	ExpectedRevision int64
+	HeadSHA          string
+	CheckSlotID      int64
+	CarriedAt        time.Time
+}
+
 type RescheduleRequest struct {
 	ID                 int64
 	ExpectedRevision   int64
@@ -490,6 +498,7 @@ type Store interface {
 	RequireReauthorization(context.Context, RequireReauthorizationRequest) (Request, error)
 	ClearRetiredCheckSlot(context.Context, ClearRetiredCheckSlotRequest) (Request, error)
 	Reauthorize(context.Context, ReauthorizeRequest) (*Request, error)
+	CarryAuthorization(context.Context, CarryAuthorizationRequest) (Request, error)
 	CompleteCleanup(context.Context, CompleteCleanupRequest) (Request, error)
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)

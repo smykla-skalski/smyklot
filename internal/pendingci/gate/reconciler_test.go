@@ -384,6 +384,98 @@ func TestPendingCIReconcilerRevalidatesMergeExclusively(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerCarriesAuthorizationToAPushedHead(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.November, 1, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name        string
+		allowed     bool
+		base        string
+		state       pendingci.AuthorizationState
+		wantCarried bool
+	}{
+		{
+			name: "push with the checks passing", allowed: true, base: "main",
+			state: pendingci.AuthorizationAuthorized, wantCarried: true,
+		},
+		{
+			name: "push with the checks refusing", base: "main",
+			state: pendingci.AuthorizationAuthorized,
+		},
+		{
+			name: "base change", allowed: true, base: "release",
+			state: pendingci.AuthorizationAuthorized,
+		},
+		{
+			name: "request already waiting for a click", allowed: true, base: "main",
+			state: pendingci.AuthorizationReauthorizationNeeded,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := &reconcilerTestStore{}
+			effects := &reconcilerTestEffects{carryAllowed: test.allowed, carrySlot: pendingci.CheckSlot{ID: 31}}
+			request := reconcilerRequest(now.Add(-time.Minute))
+			request.ArtifactKind = pendingci.ArtifactCheck
+			request.AuthorizationState = test.state
+			request.AuthorizedBy = "operator"
+			observation := reconcilerObservation(now, pendingci.ObservedPending)
+			observation.HeadSHA = "pushed-head"
+			observation.BaseBranch = test.base
+			reconciler := newReconciler(
+				store, reconcilerTestObserver{observation: observation}, effects,
+				bot.NewCoordinator(), defaultTiming(),
+			)
+
+			if err := reconciler.Process(t.Context(), request); err != nil {
+				t.Fatal(err)
+			}
+			if test.wantCarried {
+				expectCarried(t, store, now)
+
+				return
+			}
+			wantChecks := 0
+			if test.base == "main" && test.state == pendingci.AuthorizationAuthorized {
+				wantChecks = 1
+			}
+			expectClickRequired(t, store, effects, test.base, wantChecks)
+		})
+	}
+}
+
+func expectCarried(t *testing.T, store *reconcilerTestStore, carriedAt time.Time) {
+	t.Helper()
+	if store.carried == nil || store.carried.HeadSHA != "pushed-head" ||
+		store.carried.CheckSlotID != 31 || store.carried.CarriedAt != carriedAt {
+		t.Fatalf("carry = %#v, want the pushed head on check 31", store.carried)
+	}
+	if store.reauthorizationRequired != nil {
+		t.Fatalf("asked for a click after carrying: %#v", store.reauthorizationRequired)
+	}
+}
+
+func expectClickRequired(
+	t *testing.T,
+	store *reconcilerTestStore,
+	effects *reconcilerTestEffects,
+	base string,
+	wantChecks int,
+) {
+	t.Helper()
+	if store.carried != nil {
+		t.Fatalf("carried an authorization the checks refused: %#v", store.carried)
+	}
+	if store.reauthorizationRequired == nil ||
+		store.reauthorizationRequired.CandidateHeadSHA != "pushed-head" ||
+		store.reauthorizationRequired.CandidateBase != base {
+		t.Fatalf("reauthorization = %#v, want a click on the pushed head", store.reauthorizationRequired)
+	}
+	if effects.carryChecks != wantChecks {
+		t.Fatalf("carry checks = %d, want %d", effects.carryChecks, wantChecks)
+	}
+}
+
 func reconcilerRequest(progressAt time.Time) pendingci.Request {
 	return pendingci.Request{
 		ID: 7, Revision: 2, Lifecycle: pendingci.LifecycleArmed,
@@ -432,14 +524,34 @@ func (observer reconcilerTestObserver) Observe(
 }
 
 type reconcilerTestStore struct {
-	rescheduled            *pendingci.RescheduleRequest
-	finished               *pendingci.FinishRequest
-	cleanupArtifactsMarked *pendingci.MarkCleanupArtifactsDoneRequest
-	cleanupCompleted       *pendingci.CompleteCleanupRequest
-	cleanupRetried         *pendingci.RetryCleanupRequest
-	retiredCleared         *pendingci.ClearRetiredCheckSlotRequest
-	claimErr               error
-	completeErr            error
+	rescheduled             *pendingci.RescheduleRequest
+	finished                *pendingci.FinishRequest
+	cleanupArtifactsMarked  *pendingci.MarkCleanupArtifactsDoneRequest
+	cleanupCompleted        *pendingci.CompleteCleanupRequest
+	cleanupRetried          *pendingci.RetryCleanupRequest
+	retiredCleared          *pendingci.ClearRetiredCheckSlotRequest
+	carried                 *pendingci.CarryAuthorizationRequest
+	reauthorizationRequired *pendingci.RequireReauthorizationRequest
+	claimErr                error
+	completeErr             error
+}
+
+func (store *reconcilerTestStore) CarryAuthorization(
+	_ context.Context,
+	request pendingci.CarryAuthorizationRequest,
+) (pendingci.Request, error) {
+	store.carried = &request
+
+	return pendingci.Request{ID: request.ID, Revision: request.ExpectedRevision + 1}, nil
+}
+
+func (store *reconcilerTestStore) RequireReauthorization(
+	_ context.Context,
+	request pendingci.RequireReauthorizationRequest,
+) (pendingci.Request, error) {
+	store.reauthorizationRequired = &request
+
+	return pendingci.Request{ID: request.ID, Revision: request.ExpectedRevision + 1}, nil
 }
 
 func (store *reconcilerTestStore) ClearRetiredCheckSlot(
@@ -524,6 +636,27 @@ type reconcilerTestEffects struct {
 	retiredErr      error
 	retiredCurrent  bool
 	gateWakeCalls   int
+	carryAllowed    bool
+	carrySlot       pendingci.CheckSlot
+	carryChecks     int
+}
+
+func (effects *reconcilerTestEffects) CarryAuthorizationCheck(
+	context.Context,
+	pendingci.Request,
+	string,
+) (pendingci.CheckSlot, bool, error) {
+	effects.carryChecks++
+
+	return effects.carrySlot, effects.carryAllowed, nil
+}
+
+func (effects *reconcilerTestEffects) RequireReauthorizationCheck(
+	context.Context,
+	pendingci.Request,
+	string,
+) (pendingci.CheckSlot, error) {
+	return pendingci.CheckSlot{ID: 32}, nil
 }
 
 func (effects *reconcilerTestEffects) WakePendingCIGates() {

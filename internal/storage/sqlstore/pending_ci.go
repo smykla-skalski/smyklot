@@ -822,13 +822,71 @@ WHERE id = ? AND revision = ? AND lifecycle = 'armed'
 	if err := recordPendingCIEvent(ctx, tx, event); err != nil {
 		return nil, err
 	}
+	applyReauthorization(&request, change)
+	if err := syncPendingCIQueue(ctx, tx, request); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit pending CI reauthorization: %w", err)
 	}
 
-	applyReauthorization(&request, change)
-
 	return &request, nil
+}
+
+func (s *Store) CarryAuthorization(
+	ctx context.Context,
+	change pendingci.CarryAuthorizationRequest,
+) (pendingci.Request, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.Request{}, err
+	}
+
+	return s.updatePendingCIWithEvents(ctx, change.ID, "carry pending CI authorization", `
+UPDATE pending_ci_requests SET
+    head_sha = ?,
+	retired_check_slot_id = CASE
+		WHEN check_slot_id = ? THEN retired_check_slot_id
+		WHEN retired_check_slot_id = ? THEN check_slot_id
+		WHEN retired_check_slot_id IS NULL THEN check_slot_id
+		ELSE retired_check_slot_id
+	END,
+	check_slot_id = ?,
+    schedule = 'active', next_check_at = ?, lease_expires_at = NULL,
+    last_progress_at = ?, last_observed_state = '', last_fingerprint = '',
+    merge_phase = 'waiting', next_check_trigger = 'webhook',
+    updated_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND artifact_kind = 'check' AND revision = ?
+  AND authorization_state = 'authorized' AND head_sha <> ?
+  AND (
+	check_slot_id = ? OR retired_check_slot_id = ? OR retired_check_slot_id IS NULL
+  )`,
+		func(before, _ pendingci.Request) []pendingci.Event {
+			return []pendingci.Event{pendingCIAuditEvent(
+				before.ID,
+				pendingci.EventChecksObserved,
+				normalizedTrigger(before.NextCheckTrigger, pendingci.TriggerFallback),
+				string(pendingci.AuthorizationAuthorized),
+				fmt.Sprintf(
+					"Pull request head changed; carried %s's authorization to %s",
+					before.AuthorizedBy, change.HeadSHA,
+				),
+				change.CarriedAt,
+			)}
+		},
+		change.HeadSHA,
+		change.CheckSlotID,
+		change.CheckSlotID,
+		change.CheckSlotID,
+		change.CarriedAt,
+		change.CarriedAt,
+		change.CarriedAt,
+		change.ID,
+		pendingci.LifecycleArmed,
+		change.ExpectedRevision,
+		change.HeadSHA,
+		change.CheckSlotID,
+		change.CheckSlotID,
+	)
 }
 
 func applyReauthorization(request *pendingci.Request, change pendingci.ReauthorizeRequest) {

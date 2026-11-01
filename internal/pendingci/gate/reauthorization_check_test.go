@@ -27,14 +27,14 @@ func TestReauthorizationPreviewDoesNotApprove(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			harness := newReauthorizationPreviewHarness(t, test.approved, test.self, test.failApproval)
-			check, err := harness.gate.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
+			check, err := harness.backend.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
 			if err != nil || check.allowed != !test.self || check.approvalRequired != (!test.approved && !test.self) {
 				t.Fatalf("preview = %+v, %v", check, err)
 			}
 			if harness.approvals.Load() != 0 {
 				t.Fatal("preview wrote an approval")
 			}
-			allowed, err := harness.gate.preparePendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
+			allowed, err := harness.backend.preparePendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
 			if (err != nil) != test.failApproval || allowed != (!test.self && !test.failApproval) {
 				t.Fatalf("execution allowed = %v, error = %v", allowed, err)
 			}
@@ -49,19 +49,19 @@ func TestReauthorizationPreviewDoesNotApprove(t *testing.T) {
 func TestReauthorizationExecutionRechecksPreviewPermission(t *testing.T) {
 	t.Parallel()
 	harness := newReauthorizationPreviewHarness(t, false, false, false)
-	check, err := harness.gate.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
+	check, err := harness.backend.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
 	if err != nil || !check.allowed {
 		t.Fatalf("preview = %+v, %v", check, err)
 	}
 	harness.denied.Store(true)
-	allowed, err := harness.gate.preparePendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
+	allowed, err := harness.backend.preparePendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
 	if err != nil || allowed || harness.approvals.Load() != 0 {
 		t.Fatalf("revoked execution = %v, %v, approvals = %d", allowed, err, harness.approvals.Load())
 	}
 }
 
 type reauthorizationPreviewHarness struct {
-	gate      *Gate
+	backend   *Backend
 	candidate reauthorizationCandidate
 	signal    pendingci.Signal
 	approvals atomic.Int32
@@ -118,7 +118,7 @@ func newReauthorizationPreviewHarness(t *testing.T, approved, self, failApproval
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.gate = &Gate{config: func(context.Context, *github.Client, string, string, string, string) (*config.Config, error) {
+	h.backend = &Backend{config: func(context.Context, *github.Client, string, string, string, string) (*config.Config, error) {
 		return &config.Config{}, nil
 	}}
 	h.candidate = reauthorizationCandidate{slot: pendingci.CheckSlot{PullRequest: 42, Name: "Smyklot", AppID: 17}, request: pendingci.Request{CandidateBaseBranch: "main"}, client: client, owner: "owner", repository: "repository"}

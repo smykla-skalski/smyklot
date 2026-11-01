@@ -283,7 +283,7 @@ func (g *Gate) reauthorizePendingCI(
 	if err != nil || !found {
 		return false, err
 	}
-	allowed, err := g.preparePendingCIReauthorization(ctx, candidate, signal)
+	allowed, err := g.backend.preparePendingCIReauthorization(ctx, candidate, signal)
 	if err != nil || !allowed {
 		return false, err
 	}
