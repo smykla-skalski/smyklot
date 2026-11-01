@@ -6,6 +6,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
 // The preview observes policy and permissions without approving a pull request.
@@ -15,8 +16,8 @@ type reauthorizationCheck struct {
 	approvalRequired bool
 }
 
-func (g *Gate) preparePendingCIReauthorization(ctx context.Context, candidate reauthorizationCandidate, signal pendingci.Signal) (bool, error) {
-	check, err := g.checkPendingCIReauthorization(ctx, candidate, signal)
+func (backend *Backend) preparePendingCIReauthorization(ctx context.Context, candidate reauthorizationCandidate, signal pendingci.Signal) (bool, error) {
+	check, err := backend.checkPendingCIReauthorization(ctx, candidate, signal)
 	if err != nil || !check.allowed {
 		return false, err
 	}
@@ -28,7 +29,7 @@ func (g *Gate) preparePendingCIReauthorization(ctx context.Context, candidate re
 	return true, nil
 }
 
-func (g *Gate) checkPendingCIReauthorization(
+func (backend *Backend) checkPendingCIReauthorization(
 	ctx context.Context,
 	candidate reauthorizationCandidate,
 	signal pendingci.Signal,
@@ -76,7 +77,7 @@ func (g *Gate) checkPendingCIReauthorization(
 	if !requiredContextOwned(required, candidate.slot.Name, candidate.slot.AppID) {
 		return reauthorizationCheck{}, nil
 	}
-	botConfig, err := g.config(
+	botConfig, err := backend.config(
 		ctx,
 		client,
 		candidate.request.TargetID,
@@ -91,11 +92,54 @@ func (g *Gate) checkPendingCIReauthorization(
 	if err != nil {
 		return reauthorizationCheck{}, fmt.Errorf("read requested-action pull request approvals: %w", err)
 	}
-	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: g.botUsername}
+	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: backend.botUsername}
 	if bot.PendingCIApprovalAllowed(runtime, botConfig, info) != nil {
 		return reauthorizationCheck{}, nil
 	}
 	return reauthorizationCheck{allowed: true, approvalRequired: bot.PendingCIApprovalRequired(runtime, info)}, nil
+}
+
+func (backend *Backend) CarryAuthorizationCheck(
+	ctx context.Context,
+	request pendingci.Request,
+	headSHA string,
+) (pendingci.CheckSlot, bool, error) {
+	client, owner, repository, err := backend.client(ctx, request)
+	if err != nil {
+		return pendingci.CheckSlot{}, false, err
+	}
+	appID, err := backend.checkRuns.AppID(ctx)
+	if err != nil {
+		return pendingci.CheckSlot{}, false, err
+	}
+	candidate := reauthorizationCandidate{
+		slot: pendingci.CheckSlot{
+			PullRequest: request.PullRequest, Name: storage.PendingCICheckName, AppID: appID,
+		},
+		request: request, client: client, owner: owner, repository: repository,
+	}
+	candidate.request.CandidateBaseBranch = request.BaseBranch
+	allowed, err := backend.preparePendingCIReauthorization(
+		ctx, candidate, pendingci.Signal{Actor: request.AuthorizedBy, HeadSHA: headSHA},
+	)
+	if err != nil || !allowed {
+		return pendingci.CheckSlot{}, false, err
+	}
+	target, repositorySettings, err := readControls(
+		ctx, backend.store, request.TargetID, request.RepositoryID,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, false, fmt.Errorf("read carried authorization settings: %w", err)
+	}
+	slot, err := backend.checkRuns.EnsureAuthorized(
+		ctx, target, repositorySettings, request.PullRequest, headSHA,
+		request.MergeMethod, request.AuthorizedBy,
+	)
+	if err != nil {
+		return pendingci.CheckSlot{}, false, fmt.Errorf("publish carried authorization check: %w", err)
+	}
+
+	return slot, true, nil
 }
 
 // CheckReauthorization observes current eligibility without approving or changing
@@ -105,6 +149,6 @@ func (g *Gate) CheckReauthorization(ctx context.Context, repositoryID string, si
 	if err != nil || !found {
 		return false, err
 	}
-	check, err := g.checkPendingCIReauthorization(ctx, candidate, signal)
+	check, err := g.backend.checkPendingCIReauthorization(ctx, candidate, signal)
 	return check.allowed, err
 }

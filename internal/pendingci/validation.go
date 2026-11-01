@@ -179,6 +179,15 @@ func (request ReauthorizeRequest) Validate() error {
 	return nil
 }
 
+func (request CarryAuthorizationRequest) Validate() error {
+	if request.ID <= 0 || request.ExpectedRevision <= 0 || request.CheckSlotID <= 0 ||
+		empty(request.HeadSHA) || request.CarriedAt.IsZero() {
+		return invalid("authorization carry identity, head, check, and time are required")
+	}
+
+	return nil
+}
+
 func (request RetuneQuietPeriodRequest) Validate() error {
 	if request.PassingQuiet < MinPassingQuiet || request.PassingQuiet > MaxPassingQuiet {
 		return invalid(

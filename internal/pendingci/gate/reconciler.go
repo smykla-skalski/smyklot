@@ -60,6 +60,21 @@ type reauthorizationEffects interface {
 	) (pendingci.CheckSlot, error)
 }
 
+type authorizationCarryStore interface {
+	CarryAuthorization(
+		context.Context,
+		pendingci.CarryAuthorizationRequest,
+	) (pendingci.Request, error)
+}
+
+type authorizationCarryEffects interface {
+	CarryAuthorizationCheck(
+		context.Context,
+		pendingci.Request,
+		string,
+	) (pendingci.CheckSlot, bool, error)
+}
+
 type retiredCheckStore interface {
 	ClearRetiredCheckSlot(
 		context.Context,
@@ -213,7 +228,7 @@ func (reconciler *Reconciler) processArmedExclusive(
 	case pendingci.DecisionReschedule:
 		return reconciler.reschedule(ctx, request, decision, observation)
 	case pendingci.DecisionReauthorize:
-		return reconciler.requireReauthorization(ctx, request, decision, observation)
+		return reconciler.reauthorize(ctx, request, decision, observation)
 	case pendingci.DecisionFinish:
 		return reconciler.finish(ctx, request, decision.Lifecycle, decision.Reason, observation.ObservedAt)
 	case pendingci.DecisionMerge:
@@ -266,6 +281,57 @@ func (reconciler *Reconciler) reconcileRetiredCheck(
 	})
 	if err != nil {
 		return false, fmt.Errorf("clear retired pending CI check: %w", err)
+	}
+
+	return true, nil
+}
+
+func (reconciler *Reconciler) reauthorize(
+	ctx context.Context,
+	request pendingci.Request,
+	decision pendingci.Decision,
+	observation pendingci.Observation,
+) error {
+	carried, err := reconciler.carryAuthorization(ctx, request, decision, observation)
+	if err != nil || carried {
+		return err
+	}
+
+	return reconciler.requireReauthorization(ctx, request, decision, observation)
+}
+
+func (reconciler *Reconciler) carryAuthorization(
+	ctx context.Context,
+	request pendingci.Request,
+	decision pendingci.Decision,
+	observation pendingci.Observation,
+) (bool, error) {
+	if request.AuthorizationState != pendingci.AuthorizationAuthorized ||
+		decision.CandidateBase != request.BaseBranch {
+		return false, nil
+	}
+	effects, ok := reconciler.effects.(authorizationCarryEffects)
+	if !ok {
+		return false, errors.New("pending CI authorization carry effects are unavailable")
+	}
+	store, ok := reconciler.store.(authorizationCarryStore)
+	if !ok {
+		return false, errors.New("pending CI authorization carry store is unavailable")
+	}
+	slot, allowed, err := effects.CarryAuthorizationCheck(ctx, request, decision.CandidateHeadSHA)
+	if err != nil {
+		return false, fmt.Errorf("carry pending CI authorization: %w", err)
+	}
+	if !allowed {
+		return false, nil
+	}
+	_, err = store.CarryAuthorization(ctx, pendingci.CarryAuthorizationRequest{
+		ID: request.ID, ExpectedRevision: request.Revision,
+		HeadSHA: decision.CandidateHeadSHA, CheckSlotID: slot.ID,
+		CarriedAt: observation.ObservedAt,
+	})
+	if err != nil {
+		return false, fmt.Errorf("record carried pending CI authorization: %w", err)
 	}
 
 	return true, nil
@@ -327,7 +393,7 @@ func (reconciler *Reconciler) mergeExclusive(
 		return reconciler.reschedule(ctx, request, decision, observation)
 	}
 	if decision.Kind == pendingci.DecisionReauthorize {
-		return reconciler.requireReauthorization(ctx, request, decision, observation)
+		return reconciler.reauthorize(ctx, request, decision, observation)
 	}
 	if decision.Kind == pendingci.DecisionFinish {
 		return reconciler.finish(

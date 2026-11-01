@@ -88,7 +88,7 @@ func TestPendingCIReauthorizationRejectsANewMergeQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed, err := (&Gate{}).preparePendingCIReauthorization(
+	allowed, err := (&Backend{}).preparePendingCIReauthorization(
 		t.Context(),
 		reauthorizationCandidate{
 			slot: pendingci.CheckSlot{PullRequest: 42},

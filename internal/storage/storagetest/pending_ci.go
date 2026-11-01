@@ -242,6 +242,76 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(replayed.Revision).To(Equal(reauthorized.Revision))
 	})
 
+	It("carries an authorization to a pushed head and makes the request due at once", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		first := ensureSlot(ctx, store, now, 198, "old-head", "old", "authorized")
+		arm := pendingCIArm(now, 198, 101, "old-head")
+		arm.RepositoryFullName = "owner/repo"
+		arm.ArtifactKind = pendingci.ArtifactCheck
+		arm.Label = ""
+		arm.CheckSlotID = &first.ID
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		lease, err := store.LeaseDue(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		second := ensureSlot(ctx, store, now.Add(time.Minute), 198, "new-head", "new", "authorized")
+		carriedAt := now.Add(2 * time.Minute)
+		change := pendingci.CarryAuthorizationRequest{
+			ID: lease.Request.ID, ExpectedRevision: lease.Request.Revision,
+			HeadSHA: "new-head", CheckSlotID: second.ID, CarriedAt: carriedAt,
+		}
+		carried, err := store.CarryAuthorization(ctx, change)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(carried.HeadSHA).To(Equal("new-head"))
+		Expect(carried.BaseBranch).To(Equal(armed.Request.BaseBranch))
+		Expect(carried.AuthorizationState).To(Equal(pendingci.AuthorizationAuthorized))
+		Expect(carried.AuthorizedBy).To(Equal(armed.Request.AuthorizedBy))
+		Expect(carried.CandidateHeadSHA).To(BeEmpty())
+		Expect(carried.CheckSlotID).To(HaveValue(Equal(second.ID)))
+		Expect(carried.RetiredCheckSlotID).To(HaveValue(Equal(first.ID)))
+		Expect(carried.NextCheckAt).To(Equal(carriedAt))
+		Expect(carried.LeaseExpiresAt).To(BeNil())
+		Expect(carried.LastObservedState).To(BeEmpty())
+
+		_, err = store.CarryAuthorization(ctx, change)
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+		due, err := store.LeaseDue(ctx, carriedAt, carriedAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(due.Request).NotTo(BeNil())
+		Expect(due.Request.ID).To(Equal(carried.ID))
+		Expect(due.Request.HeadSHA).To(Equal("new-head"))
+
+		events, err := store.ListEvents(ctx, pendingci.EventFilter{RequestID: carried.ID})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(ContainElement(SatisfyAll(
+			HaveField("Kind", pendingci.EventChecksObserved),
+			HaveField("State", string(pendingci.AuthorizationAuthorized)),
+			HaveField("Summary", ContainSubstring("carried operator's authorization to new-head")),
+		)))
+
+		cleared, err := store.ClearRetiredCheckSlot(ctx, pendingci.ClearRetiredCheckSlotRequest{
+			ID: due.Request.ID, ExpectedRevision: due.Request.Revision,
+			CheckSlotID: first.ID, ClearedAt: carriedAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		third := ensureSlot(ctx, store, carriedAt, 198, "third-head", "third", "reauthorize")
+		waiting, err := store.RequireReauthorization(ctx, pendingci.RequireReauthorizationRequest{
+			ID: cleared.ID, ExpectedRevision: cleared.Revision,
+			CandidateHeadSHA: "third-head", CandidateBase: "release",
+			CandidateCheckID: third.ID, ObservedAt: carriedAt.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.CarryAuthorization(ctx, pendingci.CarryAuthorizationRequest{
+			ID: waiting.ID, ExpectedRevision: waiting.Revision,
+			HeadSHA: "third-head", CheckSlotID: third.ID, CarriedAt: carriedAt.Add(2 * time.Minute),
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue(),
+			"a request that waits for a click keeps waiting")
+	})
+
 	It("swaps a returning reauthorization head without losing the displaced cleanup", func() {
 		ctx, store, now := runtime()
 		seedCheckCatalog(ctx, store, now)
