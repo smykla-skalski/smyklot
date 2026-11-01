@@ -133,6 +133,7 @@ type githubStub struct {
 	prAuthor   string
 	prLabels   string
 	prHead     string
+	prBase     string
 	prComments string
 
 	issueComments    map[int64]issueCommentRecord
@@ -183,6 +184,7 @@ func newGitHubStub() *githubStub {
 		prAuthor:   "author",
 		prLabels:   `[]`,
 		prHead:     "command-head",
+		prBase:     "main",
 		prComments: `[{"id":555}]`,
 		issueComments: map[int64]issueCommentRecord{
 			githubtest.DefaultCommentID: {
@@ -527,10 +529,10 @@ func (s *githubStub) servePullRequest(w http.ResponseWriter, r *http.Request) {
 		"mergeable_state": "clean",
 		"title": "a change",
 		"user": {"login": %q},
-		"base": {"ref": "main"},
+		"base": {"ref": %q},
 		"head": {"sha": %q},
 		"labels": %s
-	}`, s.prAuthor, s.prHead, s.prLabels)
+	}`, s.prAuthor, s.prBase, s.prHead, s.prLabels)
 }
 
 // servePulls answers both things the pull request endpoint is asked: opening

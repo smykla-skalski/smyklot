@@ -65,7 +65,7 @@ type scenarioService struct {
 	next    int
 }
 
-func startScenarioService() *scenarioService {
+func startScenarioService(wrap ...func(http.Handler) http.Handler) *scenarioService {
 	GinkgoHelper()
 	stub := newGitHubStub()
 	stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"},` +
@@ -75,7 +75,11 @@ func startScenarioService() *scenarioService {
 	stub.members = `[{"id":42,"login":"bart"}]`
 	stub.prHead = scenarioFirstSHA
 	checks := &scenarioCheckRuns{runs: map[int64]scenarioCheckRun{}}
-	endpoint := httptest.NewServer(scenarioProvider(stub, checks))
+	provider := scenarioProvider(stub, checks)
+	for _, w := range wrap {
+		provider = w(provider)
+	}
+	endpoint := httptest.NewServer(provider)
 	DeferCleanup(endpoint.Close)
 
 	service, err := newServer(&serveConfig{
