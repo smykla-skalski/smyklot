@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.58.0](https://github.com/smykla-skalski/smyklot/compare/v1.57.5...v1.58.0) (2026-11-01)
+
+### Features
+
+* **pending-ci:** carry the authorization to a pushed head ([#495](https://github.com/smykla-skalski/smyklot/issues/495)) ([f278bc1](https://github.com/smykla-skalski/smyklot/commit/f278bc179c0b0561749e8537b07b2b808ac2c81c))
+
 ## [1.57.5](https://github.com/smykla-skalski/smyklot/compare/v1.57.4...v1.57.5) (2026-10-28)
 
 ### Bug Fixes
