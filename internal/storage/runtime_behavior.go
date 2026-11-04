@@ -77,25 +77,9 @@ func (value *RuntimeBehavior) UnmarshalJSON(content []byte) error {
 		}
 		patch, err = parseRuntimeBehaviorPatch(raw)
 	} else {
-		// Match the historical reader's concrete Config decoding, including zero
-		// values for fields absent in old records. Normalize collections to copies.
-		var legacy config.Config
-		// Records predating formatting must retain presentation instead of
-		// producing an invalid all-zero formatting policy during migration.
-		if _, exists := object["formatting"]; !exists {
-			legacy.Formatting = config.DefaultFormattingPolicy()
-		}
-		if err = json.Unmarshal(content, &legacy); err == nil {
-			if legacy.Runner != "" {
-				if _, runnerErr := config.ParseRunner(string(legacy.Runner)); runnerErr != nil {
-					return runnerErr
-				}
-			}
-			patch = config.ApplyPatch(&legacy, config.Patch{}).AsPatch()
-			patch.Runner = nil
-			var normalized RuntimeBehavior
-			normalized, err = NewRuntimeBehavior(patch)
-			patch = normalized.patch
+		patch, err = parseLegacyRuntimeBehavior(content, object)
+		if err != nil {
+			return err
 		}
 	}
 	if err != nil {
@@ -103,6 +87,32 @@ func (value *RuntimeBehavior) UnmarshalJSON(content []byte) error {
 	}
 	value.patch = patch
 	return nil
+}
+
+func parseLegacyRuntimeBehavior(content []byte, object map[string]any) (config.Patch, error) {
+	// Match the historical reader's concrete Config decoding, including zero
+	// values for fields absent in old records. Normalize collections to copies.
+	var legacy config.Config
+	// Records predating formatting must retain presentation instead of
+	// producing an invalid all-zero formatting policy during migration.
+	if _, exists := object["formatting"]; !exists {
+		legacy.Formatting = config.DefaultFormattingPolicy()
+	}
+	if err := json.Unmarshal(content, &legacy); err != nil {
+		return config.Patch{}, fmt.Errorf("runtime behavior: %w", err)
+	}
+	if legacy.Runner != "" {
+		if _, err := config.ParseRunner(string(legacy.Runner)); err != nil {
+			return config.Patch{}, err
+		}
+	}
+	patch := config.ApplyPatch(&legacy, config.Patch{}).AsPatch()
+	patch.Runner = nil
+	normalized, err := NewRuntimeBehavior(patch)
+	if err != nil {
+		return config.Patch{}, fmt.Errorf("runtime behavior: %w", err)
+	}
+	return normalized.patch, nil
 }
 
 func parseRuntimeBehaviorPatch(content []byte) (config.Patch, error) {

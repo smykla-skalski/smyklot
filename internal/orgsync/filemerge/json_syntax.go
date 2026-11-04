@@ -158,14 +158,13 @@ func mergeJSONObject(object *hujson.Object, patch map[string]any, deep bool) err
 		if err != nil {
 			return err
 		}
-		if index >= 0 {
-			if err := replaceJSONValue(&object.Members[index].Value, &built); err != nil {
-				return err
-			}
+		if index < 0 {
+			appendJSONMember(object, key, built)
 			continue
 		}
-
-		appendJSONMember(object, key, built)
+		if err := replaceJSONValue(&object.Members[index].Value, &built); err != nil {
+			return err
+		}
 	}
 
 	return nil
