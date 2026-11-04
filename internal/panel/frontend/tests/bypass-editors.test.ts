@@ -52,9 +52,15 @@ describe('shared bypass editors [Component]', () => {
     expect(screen.getByRole('button', { name: 'Remove Repository admin' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
     await chooseOption(screen.getByLabelText('Who'), 'Repository role');
+    await waitFor(() =>
+      expect(screen.queryByRole('option', { name: 'Repository role' })).toBeNull(),
+    );
     const add = screen.getByRole<HTMLButtonElement>('button', { name: 'Add actor' });
     expect(add.disabled).toBe(true);
     await chooseOption(screen.getByLabelText('Role'), 'Custom repository role');
+    await waitFor(() =>
+      expect(screen.queryByRole('option', { name: 'Custom repository role' })).toBeNull(),
+    );
     await fireEvent.input(screen.getByLabelText('Custom repository role ID'), {
       target: { value: '901' },
     });
@@ -232,6 +238,7 @@ describe('shared bypass editors [Component]', () => {
     expect(screen.getByText('Unavailable app')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
     await chooseOption(screen.getByLabelText('Who'), 'Deploy keys');
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'Deploy keys' })).toBeNull());
     expect(await optionLabels(screen.getByLabelText('Permission'))).toEqual([
       'Always allow',
       'Exempt from rules',
