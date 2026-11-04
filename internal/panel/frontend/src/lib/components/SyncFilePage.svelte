@@ -1214,23 +1214,6 @@ where it arises.
     onClose={() => (templateOptionsOpen = false)}
   >
     <div class="card-stack">
-      {#if templateMismatch}
-        <div class="format-action">
-          <span class="setting-say"
-            ><span class="setting-name">Format this template</span><span class="setting-why"
-              >These rules already apply to synced files; applying them here updates the source in
-              one undoable edit</span
-            ></span
-          >
-          <Button
-            disabled={frozen || templateRendering}
-            onclick={() => {
-              applyTemplateFormatting();
-              templateOptionsOpen = false;
-            }}>Apply formatting</Button
-          >
-        </div>
-      {/if}
       <FormattingEditor
         patch={templateFormatting}
         savedPatch={savedTemplateFormatting}
@@ -1250,7 +1233,22 @@ where it arises.
           )}
       />
     </div>
-    {#snippet footer()}<Button onclick={() => (templateOptionsOpen = false)}>Done</Button>{/snippet}
+    {#snippet footer()}
+      {#if templateMismatch}
+        <span class="footer-note" id="template-format-note"
+          >Synced files follow these rules, the template does not yet</span
+        >
+        <Button
+          aria-describedby="template-format-note"
+          disabled={frozen || templateRendering}
+          onclick={() => {
+            applyTemplateFormatting();
+            templateOptionsOpen = false;
+          }}>Apply formatting</Button
+        >
+      {/if}
+      <Button onclick={() => (templateOptionsOpen = false)}>Done</Button>
+    {/snippet}
   </Modal>
 {/if}
 
@@ -1482,7 +1480,7 @@ where it arises.
       {/if}
     </div>
     {#snippet footer()}
-      {#if overrideDirty(entry.repository_id)}<span class="unsaved-note">Unsaved changes</span>{/if}
+      {#if overrideDirty(entry.repository_id)}<span class="footer-note">Unsaved changes</span>{/if}
       {#if repositoryHref !== null && fileFormat(path) !== null}
         {#if handoffBusy}
           <Button tone="quiet" disabled aria-busy="true">Opening editor…</Button>
@@ -1502,22 +1500,12 @@ where it arises.
 {/if}
 
 <style>
-  .repository-view-tools,
-  .format-action {
+  .repository-view-tools {
     align-items: center;
     display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-  }
-  .format-action {
-    flex-wrap: wrap;
-  }
-  .repository-view-tools {
     flex-wrap: wrap;
     gap: var(--space-2);
-  }
-  .format-action > .setting-say {
-    flex: 1 1 16rem;
+    justify-content: space-between;
   }
 
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, so the title-to-first-row ink never
@@ -1685,7 +1673,7 @@ where it arises.
   }
   @media (max-width: 64rem) {
   }
-  .unsaved-note {
+  .footer-note {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin-inline-end: auto;

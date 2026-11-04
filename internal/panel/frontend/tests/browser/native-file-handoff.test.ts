@@ -132,6 +132,7 @@ describe('native file adjustment handoff [Browser]', () => {
         .getByRole('link', { name: 'Edit adjustments', exact: true })
         .click();
       const offered = page.getByRole('group', { name: `Adjustment for ${path}`, exact: true });
+      await offered.waitFor();
       await expect
         .poll(() => offered.evaluate((node) => node === document.activeElement))
         .toBe(true);
@@ -197,6 +198,7 @@ describe('native file adjustment handoff [Browser]', () => {
         const dialog = page.getByRole('dialog', { name: 'smyklot', exact: true });
         await dialog.getByRole('link', { name: 'Inspect adjustments', exact: true }).click();
         const target = page.locator(`[aria-label="Adjustment for ${path}"]`);
+        await target.waitFor();
         await expect
           .poll(() => target.evaluate((node) => node === document.activeElement))
           .toBe(true);
@@ -423,6 +425,7 @@ describe('native file adjustment handoff [Browser]', () => {
               name: `Adjustment for ${file.path}`,
               exact: true,
             });
+            await adjustment.waitFor();
             await expect
               .poll(() => adjustment.evaluate((node) => document.activeElement === node))
               .toBe(true);
@@ -556,6 +559,7 @@ describe('native file adjustment handoff [Browser]', () => {
             name: 'Adjustment for CONTRIBUTING.md',
             exact: true,
           });
+          await adjustment.waitFor();
           await expect
             .poll(() => adjustment.evaluate((node) => document.activeElement === node))
             .toBe(true);
