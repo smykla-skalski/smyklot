@@ -249,6 +249,7 @@ describe('configured file formatting in the development panel', () => {
               return label.left >= track.left - 1 && label.right <= track.right + 1;
             });
             expect(visible).toBe(true);
+            await options.getByRole('button', { name: 'Apply formatting', exact: true }).waitFor();
             // Focus scrolling can round fractional layout coordinates. Reject an
             // actual jump while allowing less than one CSS pixel of rounding.
             expect(Math.abs((await control.boundingBox())!.y - anchor)).toBeLessThan(1);
