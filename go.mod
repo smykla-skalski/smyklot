@@ -5,7 +5,6 @@ go 1.27.3
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/goccy/go-yaml v1.19.2
-	github.com/google/go-github/v92 v92.0.0
 	github.com/google/go-github/v93 v93.0.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jferrl/go-githubauth v1.9.1

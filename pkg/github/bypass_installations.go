@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	gogithub "github.com/google/go-github/v92/github"
+	gogithub "github.com/google/go-github/v93/github"
 )
 
 // AppInstallationAccess is an organization's installation inventory. A selected

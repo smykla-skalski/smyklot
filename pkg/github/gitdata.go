@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v92/github"
+	gogithub "github.com/google/go-github/v93/github"
 )
 
 // FileMode is the mode a tree entry carries. GitHub accepts a small closed set
@@ -139,7 +139,7 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 	// byte-order mark or a stray latin-1 character would otherwise be refused
 	// or silently rewritten, and Smyklot reads files that have both.
 	blob, _, err := c.gh.Git.CreateBlob(ctx, owner, repo, gogithub.Blob{
-		Content:  new(base64.StdEncoding.EncodeToString(content)),
+		Content:  base64.StdEncoding.EncodeToString(content),
 		Encoding: new("base64"),
 	})
 	if err != nil {
