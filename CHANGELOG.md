@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.58.1](https://github.com/smykla-skalski/smyklot/compare/v1.58.0...v1.58.1) (2026-11-05)
+
+### Bug Fixes
+
+* **deps:** update dependency bits-ui to v2.20.0 ([#482](https://github.com/smykla-skalski/smyklot/issues/482)) ([c415a96](https://github.com/smykla-skalski/smyklot/commit/c415a966ec2e842093a44e099d9dc106c4199ab1))
+* **deps:** update dependency runed to ^0.38.0 ([#491](https://github.com/smykla-skalski/smyklot/issues/491)) ([94caa70](https://github.com/smykla-skalski/smyklot/commit/94caa70a080b3ea381b3e6287960638a2bb73213))
+* **deps:** update module github.com/google/go-github/v92 to v93 ([#490](https://github.com/smykla-skalski/smyklot/issues/490)) ([04cb928](https://github.com/smykla-skalski/smyklot/commit/04cb928b15324f1a10d3293edc86cd7a51883b54))
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.9 ([#484](https://github.com/smykla-skalski/smyklot/issues/484)) ([e58a959](https://github.com/smykla-skalski/smyklot/commit/e58a9592d3280cc5e4921c400f3273a08a2532b4))
+* **deps:** update module modernc.org/sqlite to v1.61.0 ([#488](https://github.com/smykla-skalski/smyklot/issues/488)) ([aa13219](https://github.com/smykla-skalski/smyklot/commit/aa132194daa8da8bbde71cacea4a9cd49b5db924))
+* **panel:** end two browser test flakes ([#501](https://github.com/smykla-skalski/smyklot/issues/501)) ([ca92ec3](https://github.com/smykla-skalski/smyklot/commit/ca92ec3f59cbadde165abe0d801dce23a674c001))
+
 ## [1.58.1](https://github.com/smykla-skalski/smyklot/compare/v1.58.0...v1.58.1) (2026-11-04)
 
 ### Bug Fixes
