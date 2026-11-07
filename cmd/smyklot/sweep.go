@@ -50,6 +50,10 @@ func (s *server) pollLoop(ctx context.Context) {
 	beats, stopBeating := s.heartbeatBeats()
 	defer stopBeating()
 
+	// Once up front, because a ticker's first tick is a whole interval away
+	// and a deploy would otherwise open with a gap the size of the cadence
+	s.pingHeartbeat(ctx)
+
 	turn := &maintenanceTimer{}
 	defer turn.disarm()
 

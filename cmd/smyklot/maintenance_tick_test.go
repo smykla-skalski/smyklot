@@ -159,6 +159,19 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 			Eventually(hits.Load).Should(BeNumerically(">=", 2))
 		})
 
+		It("beats as soon as the loop starts", func() {
+			// A ticker's first tick is a whole interval away, so without a
+			// beat up front a deploy opened with a gap the size of the
+			// cadence - and an operator sizing the grace period from the
+			// documented cadence would have been alerted for it
+			srv := build(monitor.URL)
+			srv.heartbeatInterval = time.Hour
+
+			runLoop(srv)
+
+			Eventually(hits.Load).Should(BeNumerically("==", 1))
+		})
+
 		It("beats while background work is paused", func() {
 			// Paused is idle on purpose, not down, and a monitor cannot tell
 			// either apart from silence

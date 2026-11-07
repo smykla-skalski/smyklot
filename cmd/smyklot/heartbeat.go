@@ -20,8 +20,13 @@ const heartbeatTimeout = 10 * time.Second
 //
 // Independent of the poll interval on purpose. The beat answers "is this loop
 // still turning", which stays a question worth asking when reaction polling is
-// switched off and when background work is paused. Set the monitor's grace
-// period to a few multiples of this.
+// switched off and when background work is paused.
+//
+// It is not the gap an operator should size a grace period against. The loop
+// runs its maintenance turns on the same goroutine, and a ticker does not make
+// up the ticks it missed, so a turn in progress pushes the next beat out by
+// its whole duration: the worst case is the slowest turn plus this. DEPLOYMENT
+// says so, and points at maintenance_cycle_duration_seconds to measure it.
 const defaultHeartbeatInterval = time.Minute
 
 // heartbeatBeats returns the channel pollLoop beats on and a function to stop

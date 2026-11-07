@@ -476,7 +476,11 @@ fly logs --app smyklot
 
 `fly logs` is a live tail and keeps nothing. Fly's log search, in the same Grafana, retains 7 days and reads the JSON fields, which is where to go for a delivery that failed yesterday.
 
-None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged once a minute by the loop that answers reaction commands, so an external monitor can alert when the pings stop. Set the monitor's grace period to a few multiples of a minute, not to `SMYKLOT_POLL_INTERVAL`: the two are independent, and a long maintenance turn holds the loop and so delays a beat. Five minutes is a reasonable starting point. The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
+None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged by the loop that answers reaction commands: once when it starts, and once a minute after that. An external monitor can then alert when the pings stop.
+
+Size the grace period against the gap the service can actually leave, which is not one minute. The loop runs the maintenance turns on the same goroutine, so a turn in progress delays the beat behind it by however long the turn takes, and the missed ticks are not made up afterwards. The worst case is therefore your slowest turn plus a minute. `smyklot_maintenance_cycle_duration_seconds` is what measures those turns, so read its upper buckets and set the grace period above that. Five minutes suits a handful of repositories. Do not base it on `SMYKLOT_POLL_INTERVAL`, which no longer has anything to do with the cadence.
+
+The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
 
 ```bash
 fly secrets set SMYKLOT_HEARTBEAT_URL="https://uptime.betterstack.com/api/v1/heartbeat/<token>" --app smyklot
