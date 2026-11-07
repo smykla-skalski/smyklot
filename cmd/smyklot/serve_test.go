@@ -23,6 +23,8 @@ var serveEnv = []string{
 	envWebhookPath,
 	envPollInterval,
 	envPendingCIQuietPeriod,
+	envPathIndexInterval,
+	envHeartbeatURL,
 	envLogFormat,
 	envLogLevel,
 	envDatabase,
@@ -61,30 +63,10 @@ func loadServe(env map[string]string, args ...string) (*serveConfig, error) {
 		GinkgoT().Setenv(key, value)
 	}
 
+	// The service's own registration, not a copy of it: a flag this list
+	// lacked failed every spec here with "flag accessed but not defined"
 	cmd := &cobra.Command{}
-	cmd.Flags().String(flagListen, defaultListenAddress, descListen)
-	cmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
-	cmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
-	cmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
-	cmd.Flags().Duration(
-		flagPendingCIQuietPeriod,
-		defaultPendingCIQuietPeriod,
-		descPendingCIQuietPeriod,
-	)
-	cmd.Flags().Duration(
-		flagPathIndexInterval,
-		defaultPathIndexInterval,
-		descPathIndexInterval,
-	)
-	cmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
-	cmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
-	cmd.Flags().String(flagDatabase, defaultState, descDatabase)
-	cmd.Flags().String(flagState, "", descState)
-	cmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
-	cmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
-	cmd.Flags().String(flagPanelState, "", descPanelState)
-	cmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
-	cmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
+	registerServeFlags(cmd)
 
 	if err := cmd.ParseFlags(args); err != nil {
 		return nil, err
@@ -99,6 +81,14 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	It("should refuse to start without a webhook secret", func() {
 		_, err := loadServe(map[string]string{envWebhookSecret: ""})
 		Expect(err).To(MatchError(ErrNoWebhookSecret))
+	})
+
+	// A heartbeat the monitor never hears from is read as the service being
+	// down, so an address that cannot be dialled is refused here rather than
+	// at the first beat
+	It("should refuse a heartbeat address with no host in it", func() {
+		_, err := loadServe(map[string]string{envHeartbeatURL: "https://:443/beat"})
+		Expect(err).To(MatchError(ErrInvalidHeartbeatURL))
 	})
 
 	It("should default the listen address, path, and interval", func() {

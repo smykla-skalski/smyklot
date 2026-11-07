@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path"
@@ -31,6 +32,7 @@ const (
 	flagPollInterval         = "poll-interval"
 	flagPendingCIQuietPeriod = "pending-ci-quiet-period"
 	flagPathIndexInterval    = "path-index-interval"
+	flagHeartbeatURL         = "heartbeat-url"
 	flagLogFormat            = "log-format"
 	flagLogLevel             = "log-level"
 	flagDatabase             = "database-url"
@@ -47,6 +49,7 @@ const (
 	descPollInterval         = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descPendingCIQuietPeriod = "How long CI must remain unchanged and passing before merge"
 	descPathIndexInterval    = "How often a repository's file list is checked for changes"
+	descHeartbeatURL         = "URL to ping at startup then once a minute, for an external heartbeat monitor (empty disables it)"
 	descLogFormat            = "Log format: json or text"
 	descLogLevel             = "Log level: debug, info, warn or error"
 	descDatabase             = "Database to store service state in: a postgres:// URL or a file path"
@@ -64,6 +67,7 @@ const (
 	envPollInterval         = "SMYKLOT_POLL_INTERVAL"
 	envPendingCIQuietPeriod = "SMYKLOT_PENDING_CI_QUIET_PERIOD"
 	envPathIndexInterval    = "SMYKLOT_PATH_INDEX_INTERVAL"
+	envHeartbeatURL         = "SMYKLOT_HEARTBEAT_URL" //nolint:gosec // Environment variable name, not a credential
 	envLogFormat            = "SMYKLOT_LOG_FORMAT"
 	envLogLevel             = "SMYKLOT_LOG_LEVEL"
 	envDatabase             = "SMYKLOT_DATABASE_URL"
@@ -139,6 +143,12 @@ var (
 	// ErrInvalidPathIndexInterval is returned for an unusable refresh interval.
 	ErrInvalidPathIndexInterval = errors.New("invalid path index interval")
 
+	// ErrInvalidHeartbeatURL is returned when the heartbeat URL is set but
+	// unusable. Refused at startup rather than at the first tick: a monitor
+	// that is never pinged reports the service down, so a typo here would
+	// page somebody about a service that is working
+	ErrInvalidHeartbeatURL = errors.New("heartbeat URL must be an absolute http or https URL")
+
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
 
@@ -181,37 +191,52 @@ therefore also requires SMYKLOT_PANEL_CLIENT_ID and SMYKLOT_PANEL_CLIENT_SECRET.
 }
 
 func init() {
-	serveCmd.Flags().String(flagListen, defaultListenAddress, descListen)
-	serveCmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
-	serveCmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
-	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
-	serveCmd.Flags().Duration(
-		flagPendingCIQuietPeriod,
-		defaultPendingCIQuietPeriod,
-		descPendingCIQuietPeriod,
-	)
-	serveCmd.Flags().Duration(
-		flagPathIndexInterval,
-		defaultPathIndexInterval,
-		descPathIndexInterval,
-	)
-	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
-	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
-	serveCmd.Flags().String(flagDatabase, defaultState, descDatabase)
-	serveCmd.Flags().String(flagState, "", descState)
-	_ = serveCmd.Flags().MarkDeprecated(flagState, "use --database-url")
-	serveCmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
-	serveCmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
-	serveCmd.Flags().String(flagPanelState, "", descPanelState)
-	_ = serveCmd.Flags().MarkDeprecated(flagPanelState, "use --database-url")
-	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
-	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
+	registerServeFlags(serveCmd)
 
 	// The service resolves the same settings from the same layers the Action
 	// does, so it takes the same flags
 	config.RegisterFlags(serveCmd.Flags())
 
 	rootCmd.AddCommand(serveCmd)
+}
+
+// registerServeFlags declares every flag the service itself takes.
+//
+// A function rather than a list inside init, because the specs resolve
+// configuration from a command they build themselves and need the same flags
+// on it. While that was a second copy of the list it drifted on the first flag
+// added to one side only, and the whole service suite failed with "flag
+// accessed but not defined" - which names the flag and nothing about why there
+// were two lists.
+func registerServeFlags(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	flags.String(flagListen, defaultListenAddress, descListen)
+	flags.String(flagAdminListen, defaultAdminAddress, descAdminListen)
+	flags.String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
+	flags.Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	flags.Duration(
+		flagPendingCIQuietPeriod,
+		defaultPendingCIQuietPeriod,
+		descPendingCIQuietPeriod,
+	)
+	flags.Duration(
+		flagPathIndexInterval,
+		defaultPathIndexInterval,
+		descPathIndexInterval,
+	)
+	flags.String(flagHeartbeatURL, "", descHeartbeatURL)
+	flags.String(flagLogFormat, defaultLogFormat, descLogFormat)
+	flags.String(flagLogLevel, defaultLogLevel, descLogLevel)
+	flags.String(flagDatabase, defaultState, descDatabase)
+	flags.String(flagState, "", descState)
+	_ = flags.MarkDeprecated(flagState, "use --database-url")
+	flags.String(flagPanelOrigin, "", descPanelOrigin)
+	flags.String(flagPanelBase, defaultPanelBase, descPanelBase)
+	flags.String(flagPanelState, "", descPanelState)
+	_ = flags.MarkDeprecated(flagPanelState, "use --database-url")
+	flags.Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
+	flags.Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 }
 
 // serveConfig is everything the service needs to start.
@@ -226,6 +251,18 @@ type serveConfig struct {
 	// adminAddress carries the probes, metrics and recent failures, on its own
 	// port because the webhook port is reachable from the internet
 	adminAddress string
+
+	// heartbeatURL is pinged when the maintenance loop starts and once a
+	// minute after that, so an external monitor can alert when the loop stops
+	// turning. Empty disables it.
+	//
+	// A long maintenance turn delays the beat behind it, so the gap this can
+	// leave is the slowest turn plus the cadence, which is what a grace period
+	// has to be sized against. DEPLOYMENT says so.
+	//
+	// The token is in the URL, so this is a credential: set it as a secret
+	// rather than in a committed configuration file
+	heartbeatURL string
 
 	logFormat logging.Format
 	logLevel  slog.Level
@@ -540,7 +577,60 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return ErrInvalidPathIndexInterval
 	}
 
+	heartbeat, err := cmd.Flags().GetString(flagHeartbeatURL)
+	if err != nil {
+		return err
+	}
+	cfg.heartbeatURL = flagOrEnv(cmd, flagHeartbeatURL, heartbeat, envHeartbeatURL)
+	if !heartbeatURLUsable(cfg.heartbeatURL) {
+		return ErrInvalidHeartbeatURL
+	}
+
 	return applyLogFlags(cmd, cfg)
+}
+
+// heartbeatURLUsable reports whether the configured heartbeat URL can be
+// pinged. An empty URL is the way to switch the heartbeat off, so it passes.
+func heartbeatURLUsable(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
+	// Hostname rather than Host, because "https://:443/beat" has a non-empty
+	// Host holding only a port. The client would dial an empty host, so the
+	// monitor would never hear from it
+	if parsed.Hostname() == "" {
+		return false
+	}
+
+	return heartbeatPortDialable(parsed.Port())
+}
+
+// heartbeatPortDialable reports whether a URL's port can be dialled. An empty
+// port is the scheme's default, so it passes.
+//
+// url.Parse refuses a port that is not a number, and a negative one with it,
+// but not one out of range: ":99999" and ":0" arrive from it as valid URLs
+// that nothing can connect to.
+func heartbeatPortDialable(port string) bool {
+	if port == "" {
+		return true
+	}
+
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+
+	return number > 0 && number <= 65535
 }
 
 // applyLogFlags resolves how the service writes its log lines.

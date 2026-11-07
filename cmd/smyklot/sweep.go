@@ -42,60 +42,144 @@ func (s *server) pollLoop(ctx context.Context) {
 		s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 	}
 
+	// The beat is this loop's own, not the dispatch's. It has to carry on
+	// while there is no work, while background work is paused and while
+	// reaction polling is switched off, because none of those is an outage -
+	// and it still stops if the loop wedges, which is the whole point, since
+	// nothing here runs on another goroutine
+	beats, stopBeating := s.heartbeatBeats()
+	defer stopBeating()
+
+	// Once up front, because a ticker's first tick is a whole interval away
+	// and a deploy would otherwise open with a gap the size of the cadence
+	s.pingHeartbeat(ctx)
+
+	turn := &maintenanceTimer{}
+	defer turn.disarm()
+
 	s.logPollInterval(interval)
 	for {
-		delay, err := s.nextMaintenanceDelay(ctx, interval)
-		if err != nil {
-			s.logger.Error("read maintenance queue schedule", "error", err)
-		}
-		delay = maintenanceDelayWithRetry(delay, maintenanceRetryAt, time.Now().UTC())
-		if delay == nil {
-			select {
-			case <-ctx.Done():
-				return
-			case <-s.pollIntervalChanged:
-				interval = s.pollInterval()
-				s.logPollInterval(interval)
-			case <-s.workQueueChanged:
-				s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
-			}
-
-			continue
+		if !turn.armed() {
+			s.armMaintenanceTurn(ctx, turn, interval, maintenanceRetryAt)
 		}
 
-		timer := time.NewTimer(*delay)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
-
 			return
 		case <-s.pollIntervalChanged:
-			timer.Stop()
+			// The pending turn was scheduled against the old interval, so this
+			// is one of the two wakeups that should discard it
+			turn.disarm()
 			interval = s.pollInterval()
 			s.logPollInterval(interval)
 		case <-s.workQueueChanged:
-			timer.Stop()
 			// An explicit queue action must be able to wake this lane even when
 			// an earlier automatic dispatch is waiting for its retry boundary.
+			turn.disarm()
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
-		case <-timer.C:
+		case <-beats:
+			// Deliberately leaves the turn armed
+			s.pingHeartbeat(ctx)
+		case <-turn.C():
+			turn.disarm()
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		}
 	}
 }
 
+// maintenanceTimer is pollLoop's single timer for the turn it owes.
+//
+// One timer, armed once per turn rather than once per wakeup. A wakeup that is
+// not the timer's own has to leave a pending turn where it is: re-armed from
+// scratch on every beat, a five-minute interval was pushed back a minute at a
+// time and the turn never came, so a deployment that went on reporting itself
+// healthy swept no reactions at all.
+type maintenanceTimer struct {
+	timer *time.Timer
+	due   <-chan time.Time
+}
+
+// armed reports whether a turn is already waiting.
+func (t *maintenanceTimer) armed() bool {
+	return t.due != nil
+}
+
+// arm schedules a turn one delay from now.
+func (t *maintenanceTimer) arm(delay time.Duration) {
+	if t.timer == nil {
+		t.timer = time.NewTimer(delay)
+	} else {
+		t.timer.Reset(delay)
+	}
+
+	t.due = t.timer.C
+}
+
+// disarm throws a pending turn away, and is also how a turn that has arrived
+// is cleared.
+func (t *maintenanceTimer) disarm() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+
+	t.due = nil
+}
+
+// C is the channel the turn arrives on.
+//
+// It is nil while nothing is owed, and a receive on a nil channel blocks for
+// ever - which is how one select can wait either for a turn or only for the
+// things that are not one.
+func (t *maintenanceTimer) C() <-chan time.Time {
+	return t.due
+}
+
+// armMaintenanceTurn schedules the next turn of the lane, if one is owed.
+func (s *server) armMaintenanceTurn(
+	ctx context.Context,
+	turn *maintenanceTimer,
+	interval time.Duration,
+	retryAt time.Time,
+) {
+	delay, err := s.nextMaintenanceDelay(ctx, interval)
+	if err != nil {
+		s.logger.Error("read maintenance queue schedule", "error", err)
+	}
+
+	delay = maintenanceDelayWithRetry(delay, retryAt, time.Now().UTC())
+	if delay == nil {
+		return
+	}
+
+	turn.arm(*delay)
+}
+
+// tryDispatchMaintenanceQueue turns the maintenance lane once and records how
+// it went.
+//
+// This is where the lane is measured, rather than runSweep, because runSweep is
+// only how a deployment without a panel spends a turn. One with a panel takes
+// the durable queue instead, so a count kept down there never moved in
+// production at all.
 func (s *server) tryDispatchMaintenanceQueue(
 	ctx context.Context,
 	retryAt *time.Time,
 ) {
+	started := time.Now()
+
 	err := s.dispatchMaintenanceQueue(ctx)
+
+	s.metrics.MaintenanceCycleDuration.Observe(time.Since(started).Seconds())
+
 	if err == nil {
+		s.metrics.MaintenanceCycles.WithLabelValues(metrics.ResultSuccess).Inc()
 		*retryAt = time.Time{}
 
 		return
 	}
+	s.metrics.MaintenanceCycles.WithLabelValues(metrics.ResultFailure).Inc()
 	*retryAt = maintenanceRetryBoundary(time.Now().UTC())
 	s.logger.Error(
 		"dispatch maintenance queue",
@@ -163,9 +247,11 @@ func (s *server) dispatchMaintenanceQueue(ctx context.Context) error {
 		return s.dispatchDurableMaintenance(ctx)
 	}
 	s.maintainPanel(ctx)
-	s.runSweep(ctx)
 
-	return nil
+	// Returned rather than swallowed, so a sweep that failed reaches the
+	// cycle's result label. While runSweep absorbed it, a 401 on the
+	// installation list was counted as a successful turn
+	return s.runSweep(ctx)
 }
 
 func (s *server) WakeQueue(lane workqueue.Lane) {
@@ -229,28 +315,23 @@ func (s *server) logPollInterval(interval time.Duration) {
 	s.logger.Info("sweeping reactions", "interval", interval.String())
 }
 
-// runSweep sweeps once and records how it went.
+// runSweep sweeps once and hands its outcome back.
 //
-// The duration matters as much as the outcome: a sweep that grows past the
-// interval delays every one after it, and this is where that shows up before
-// reactions start arriving late.
-func (s *server) runSweep(ctx context.Context) {
+// It reports no metric of its own. A sweep is one way the maintenance lane
+// spends a turn and is only reachable without a panel, so the series belong to
+// the lane, which tryDispatchMaintenanceQueue measures on both branches. The
+// error goes with them rather than being logged and dropped here, which is
+// what made a failed sweep register as a successful turn.
+func (s *server) runSweep(ctx context.Context) error {
 	started := time.Now()
 
-	err := s.sweep(ctx)
-	elapsed := time.Since(started)
-
-	s.metrics.SweepDuration.Observe(elapsed.Seconds())
-
-	if err != nil {
-		s.metrics.Sweeps.WithLabelValues(metrics.ResultFailure).Inc()
-		s.logger.Error("sweep failed", "error", err, "duration", elapsed.String())
-
-		return
+	if err := s.sweep(ctx); err != nil {
+		return err
 	}
 
-	s.metrics.Sweeps.WithLabelValues(metrics.ResultSuccess).Inc()
-	s.logger.Debug("sweep complete", "duration", elapsed.String())
+	s.logger.Debug("sweep complete", "duration", time.Since(started).String())
+
+	return nil
 }
 
 // sweep polls every repository the App is installed on.

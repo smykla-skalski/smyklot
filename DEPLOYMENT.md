@@ -476,6 +476,18 @@ fly logs --app smyklot
 
 `fly logs` is a live tail and keeps nothing. Fly's log search, in the same Grafana, retains 7 days and reads the JSON fields, which is where to go for a delivery that failed yesterday.
 
+None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged by the loop that answers reaction commands: once when it starts, and once a minute after that. An external monitor can then alert when the pings stop.
+
+Size the grace period against the gap the service can actually leave, which is not one minute. The loop runs the maintenance turns on the same goroutine, so a turn in progress delays the beat behind it by however long the turn takes, and the missed ticks are not made up afterwards. The worst case is therefore your slowest turn plus a minute. `smyklot_maintenance_cycle_duration_seconds` is what measures those turns, so read its upper buckets and set the grace period above that. Five minutes suits a handful of repositories. Do not base it on `SMYKLOT_POLL_INTERVAL`, which no longer has anything to do with the cadence.
+
+The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
+
+```bash
+fly secrets set SMYKLOT_HEARTBEAT_URL="https://uptime.betterstack.com/api/v1/heartbeat/<token>" --app smyklot
+```
+
+The heartbeat reports liveness, not correctness. It keeps beating with no work to do, with background work paused, with reaction polling switched off and with a job that fails every time, because none of those is an outage and a monitor cannot tell any of them from silence. It stops when the loop stops, which is the one thing it is for. What the lane actually did is in the metrics and the log instead: `smyklot_maintenance_cycles_total{result}` counts the turns.
+
 ### What This Costs
 
 One `shared-cpu-1x` machine with 256MB, running continuously, is roughly $2 a month. There is no plan fee. The measured service uses about 17MB idle and 23MB under a burst, so 256MB is the smallest size Fly offers rather than a size this needs.
