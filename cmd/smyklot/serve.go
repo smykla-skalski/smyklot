@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path"
@@ -31,6 +32,7 @@ const (
 	flagPollInterval         = "poll-interval"
 	flagPendingCIQuietPeriod = "pending-ci-quiet-period"
 	flagPathIndexInterval    = "path-index-interval"
+	flagHeartbeatURL         = "heartbeat-url"
 	flagLogFormat            = "log-format"
 	flagLogLevel             = "log-level"
 	flagDatabase             = "database-url"
@@ -47,6 +49,7 @@ const (
 	descPollInterval         = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descPendingCIQuietPeriod = "How long CI must remain unchanged and passing before merge"
 	descPathIndexInterval    = "How often a repository's file list is checked for changes"
+	descHeartbeatURL         = "URL to ping after each maintenance tick, for an external heartbeat monitor (empty disables it)"
 	descLogFormat            = "Log format: json or text"
 	descLogLevel             = "Log level: debug, info, warn or error"
 	descDatabase             = "Database to store service state in: a postgres:// URL or a file path"
@@ -64,6 +67,7 @@ const (
 	envPollInterval         = "SMYKLOT_POLL_INTERVAL"
 	envPendingCIQuietPeriod = "SMYKLOT_PENDING_CI_QUIET_PERIOD"
 	envPathIndexInterval    = "SMYKLOT_PATH_INDEX_INTERVAL"
+	envHeartbeatURL         = "SMYKLOT_HEARTBEAT_URL" //nolint:gosec // Environment variable name, not a credential
 	envLogFormat            = "SMYKLOT_LOG_FORMAT"
 	envLogLevel             = "SMYKLOT_LOG_LEVEL"
 	envDatabase             = "SMYKLOT_DATABASE_URL"
@@ -139,6 +143,12 @@ var (
 	// ErrInvalidPathIndexInterval is returned for an unusable refresh interval.
 	ErrInvalidPathIndexInterval = errors.New("invalid path index interval")
 
+	// ErrInvalidHeartbeatURL is returned when the heartbeat URL is set but
+	// unusable. Refused at startup rather than at the first tick: a monitor
+	// that is never pinged reports the service down, so a typo here would
+	// page somebody about a service that is working
+	ErrInvalidHeartbeatURL = errors.New("heartbeat URL must be an absolute http or https URL")
+
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
 
@@ -195,6 +205,7 @@ func init() {
 		defaultPathIndexInterval,
 		descPathIndexInterval,
 	)
+	serveCmd.Flags().String(flagHeartbeatURL, "", descHeartbeatURL)
 	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
 	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
 	serveCmd.Flags().String(flagDatabase, defaultState, descDatabase)
@@ -226,6 +237,13 @@ type serveConfig struct {
 	// adminAddress carries the probes, metrics and recent failures, on its own
 	// port because the webhook port is reachable from the internet
 	adminAddress string
+
+	// heartbeatURL is pinged after every maintenance tick, so an external
+	// monitor can alert when the loop stops turning. Empty disables it.
+	//
+	// The token is in the URL, so this is a credential: set it as a secret
+	// rather than in a committed configuration file
+	heartbeatURL string
 
 	logFormat logging.Format
 	logLevel  slog.Level
@@ -540,7 +558,30 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 		return ErrInvalidPathIndexInterval
 	}
 
+	heartbeat, err := cmd.Flags().GetString(flagHeartbeatURL)
+	if err != nil {
+		return err
+	}
+	cfg.heartbeatURL = flagOrEnv(cmd, flagHeartbeatURL, heartbeat, envHeartbeatURL)
+	if !heartbeatURLUsable(cfg.heartbeatURL) {
+		return ErrInvalidHeartbeatURL
+	}
+
 	return applyLogFlags(cmd, cfg)
+}
+
+// heartbeatURLUsable reports whether the configured heartbeat URL can be
+// pinged. An empty URL is the way to switch the heartbeat off, so it passes.
+func heartbeatURLUsable(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
 }
 
 // applyLogFlags resolves how the service writes its log lines.

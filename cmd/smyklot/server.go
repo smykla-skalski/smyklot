@@ -178,11 +178,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
-	// The two values that must never reach a log line or the failures
-	// endpoint, taught to the one place that can catch them
+	// The values that must never reach a log line or the failures endpoint,
+	// taught to the one place that can catch them. The heartbeat URL is here
+	// because its token is the URL: anyone holding it can report the service
+	// healthy, and a transport error quotes the whole address
 	secrets := [][]byte{cfg.webhookSecret, cfg.appPrivateKey}
 	if cfg.panel != nil {
 		secrets = append(secrets, []byte(cfg.panel.clientSecret))
+	}
+	if cfg.heartbeatURL != "" {
+		secrets = append(secrets, []byte(cfg.heartbeatURL))
 	}
 	redactor := logging.NewRedactor(secrets...)
 

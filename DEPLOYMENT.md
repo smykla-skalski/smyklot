@@ -476,6 +476,14 @@ fly logs --app smyklot
 
 `fly logs` is a live tail and keeps nothing. Fly's log search, in the same Grafana, retains 7 days and reads the JSON fields, which is where to go for a delivery that failed yesterday.
 
+None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged after each maintenance tick, so an external monitor can alert when the pings stop. The maintenance lane is what answers reaction commands, and it turns at least once per `SMYKLOT_POLL_INTERVAL`, so set the monitor's grace period to a few multiples of that. The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
+
+```bash
+fly secrets set SMYKLOT_HEARTBEAT_URL="https://uptime.betterstack.com/api/v1/heartbeat/<token>" --app smyklot
+```
+
+The heartbeat reports liveness, not correctness. A tick that found no work, and one taken while background work is paused, both ping: a paused service is idle on purpose, and silencing the heartbeat for it would page somebody about a working deployment. What a sweep actually did is in the metrics and the log beside it.
+
 ### What This Costs
 
 One `shared-cpu-1x` machine with 256MB, running continuously, is roughly $2 a month. There is no plan fee. The measured service uses about 17MB idle and 23MB under a burst, so 256MB is the smallest size Fly offers rather than a size this needs.

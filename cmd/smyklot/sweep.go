@@ -93,6 +93,7 @@ func (s *server) tryDispatchMaintenanceQueue(
 	err := s.dispatchMaintenanceQueue(ctx)
 	if err == nil {
 		*retryAt = time.Time{}
+		s.pingHeartbeat(ctx)
 
 		return
 	}
