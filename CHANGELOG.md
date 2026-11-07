@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.59.0](https://github.com/smykla-skalski/smyklot/compare/v1.58.1...v1.59.0) (2026-11-07)
+
+### Features
+
+* **fly:** scrape the admin metrics port ([#513](https://github.com/smykla-skalski/smyklot/issues/513)) ([b7071e9](https://github.com/smykla-skalski/smyklot/commit/b7071e9db00f0ed2f5256c93154f68e1ca6d089d))
+* **serve:** beat a heartbeat each tick ([#515](https://github.com/smykla-skalski/smyklot/issues/515)) ([1f5d2e9](https://github.com/smykla-skalski/smyklot/commit/1f5d2e904a916ccbb3191614b2f73a1b51529b89))
+
+### Bug Fixes
+
+* **deps:** clear what the bump queue left behind ([#517](https://github.com/smykla-skalski/smyklot/issues/517)) ([8f62309](https://github.com/smykla-skalski/smyklot/commit/8f62309acb1428330401a8114f3e063c249b0762))
+* **deps:** update dependency bits-ui to v2.20.2 ([#503](https://github.com/smykla-skalski/smyklot/issues/503)) ([b3f451b](https://github.com/smykla-skalski/smyklot/commit/b3f451b037d266d3f5d41b8dcdeb85f14296fc6b))
+* **deps:** update module github.com/jackc/pgx/v5 to v5.12.0 ([#512](https://github.com/smykla-skalski/smyklot/issues/512)) ([5def174](https://github.com/smykla-skalski/smyklot/commit/5def174fd2c5ffa3b4e6a6af462a69bc846cee57))
+* **deps:** update module github.com/jferrl/go-githubauth to v1.11.0 ([#510](https://github.com/smykla-skalski/smyklot/issues/510)) ([9692e8a](https://github.com/smykla-skalski/smyklot/commit/9692e8ae2cad7c37232c2051b890026be9fe0431))
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.12 ([#507](https://github.com/smykla-skalski/smyklot/issues/507)) ([057c7ac](https://github.com/smykla-skalski/smyklot/commit/057c7acc2219126688b19f9a63717a27ef25b8d2))
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.13 ([#516](https://github.com/smykla-skalski/smyklot/issues/516)) ([59eeb43](https://github.com/smykla-skalski/smyklot/commit/59eeb43d3e38bf67024b7536a1779632146155af))
+
 ## [1.58.1](https://github.com/smykla-skalski/smyklot/compare/v1.58.0...v1.58.1) (2026-11-05)
 
 ### Bug Fixes
