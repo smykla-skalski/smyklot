@@ -56,7 +56,7 @@
 <!--
   The deployment's own settings, and what each one resolves to. Every value here is
   either the deployment's or an override the console has set on top of it - the
-  precedence chain that decides which is written out in CLAUDE.md.
+  precedence chain that decides which is written out in AGENTS.md.
 -->
 <Story name="Settings - all from the deployment">
   {#snippet template(args)}

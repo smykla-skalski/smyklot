@@ -58,7 +58,7 @@ func PrecedenceLayers() []PrecedenceLayer {
 }
 
 // PrecedenceDoc renders the layers as the block written into README.md and
-// CLAUDE.md, which a test then holds to this output.
+// AGENTS.md, which a test then holds to this output.
 //
 // Five documents disagreed about this and the code contradicted all of them.
 // Prose copied by hand is prose that goes stale, so there is one copy and the

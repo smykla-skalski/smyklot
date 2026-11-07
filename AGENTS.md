@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Smyklot: GitHub App for automated PR approvals/merges based on CODEOWNERS.
 Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
