@@ -5,6 +5,8 @@ go = "1.27.3"
 node = "26.13.0"
 "npm:markdownlint-cli2" = { version = "0.24.0", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.33.1"
+"github:sourcegraph/scip-go" = "0.2.9"
+"npm:@sourcegraph/scip-typescript" = "0.6.1"
 actionlint = "1.7.12"
 golangci-lint = "2.15.0"
 helm = "4.3.1"
@@ -378,6 +380,21 @@ run = "go mod tidy"
 [tasks.generate]
 description = "Run Go code generation"
 run = "go generate ./..."
+
+# The indexes are committed, and `scip.yaml` regenerates them on main. The Go index
+# needs the embedded panel bundle to type-check, and the panel index needs the
+# frontend's node_modules and the tsconfig SvelteKit writes into them. The panel is
+# indexed from the repository root so both files share one set of paths, and the
+# service worker is named on its own because the panel's tsconfig excludes it.
+[tasks.scip]
+description = "Regenerate the committed SCIP indexes for the Go module and the panel"
+depends = ["panel:assets:generate", "panel:frontend:install"]
+run = '''
+mkdir -p scip
+scip-go --output scip/go.scip
+scip-typescript index --no-progress-bar --output scip/panel.scip \
+  internal/panel/frontend internal/panel/frontend/src/service-worker
+'''
 
 [tasks.clean]
 description = "Remove repository-local build artifacts while preserving shared caches"

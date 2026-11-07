@@ -3,6 +3,9 @@ name: Test
 on:
   push:
     branches: [main]
+    # The index refresh `scip.yaml` commits onto main changes no source, and the
+    # commit it was built from has already been tested.
+    paths-ignore: [scip/**]
   pull_request:
     branches: [main]
   # The release gate is this workflow, called. A release must have passed what a
