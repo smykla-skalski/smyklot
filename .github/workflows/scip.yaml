@@ -34,6 +34,8 @@ on:
 
 permissions:
   contents: read
+  # To see whether a Release run is active before committing onto main.
+  actions: read
 
 # A newer commit on main supersedes an older refresh: its parent would no longer
 # be the head, so the older run's commit could not land anyway.
@@ -45,6 +47,8 @@ jobs:
   index:
     name: index
     runs-on: ubuntu-26.04
+    # Room to wait out a release, deploy included.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -73,6 +77,40 @@ jobs:
 
       - name: Index the code
         run: mise run scip
+
+      # Release checks out the commit it was started for, and semantic-release
+      # declines to publish from a checkout behind main. A refresh landing while
+      # Release waits on Test would make it skip silently, so a refresh waits
+      # until no Release run is active. A release commit is a push of its own and
+      # starts the refresh that replaces this one.
+      #
+      # ponytail: a scheduled or dispatched Release that starts after this check
+      # can still be overtaken, and its unreleased commits wait for the next day's
+      # run. A shared concurrency group is not the fix: GitHub cancels a pending
+      # run when another queues in its group, and the pending run can be Release.
+      - name: Wait for any release in progress
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Counted per status by the API, so finished runs cannot crowd an active
+        # one out of a page. Each count is a plain assignment, where a failed
+        # query stops the step instead of reading as a release in progress.
+        #
+        # Only runs created in the last six hours count, the most a job may run.
+        # GitHub still lists three runs from August 2026 as in progress, and
+        # counting them would hold every refresh until the job timed out.
+        run: |
+          while :; do
+            since="$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+            active=0
+            for status in requested waiting pending queued in_progress; do
+              count="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yaml/runs?status=$status&created=%3E%3D$since&per_page=1" --jq .total_count)"
+              active=$((active + count))
+            done
+            [ "$active" -eq 0 ] && break
+            echo "Waiting for $active active release run(s)"
+            sleep 30
+          done
 
       - name: Generate App Token
         id: app-token
