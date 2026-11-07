@@ -149,11 +149,6 @@ var (
 	// page somebody about a service that is working
 	ErrInvalidHeartbeatURL = errors.New("heartbeat URL must be an absolute http or https URL")
 
-	// ErrHeartbeatWithoutPolling is returned when a heartbeat is configured
-	// with reaction polling switched off. The beat rides the maintenance
-	// timer, so there would be nothing to carry it
-	ErrHeartbeatWithoutPolling = errors.New("heartbeat URL needs a non-zero poll interval")
-
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
 
@@ -584,12 +579,6 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	cfg.heartbeatURL = flagOrEnv(cmd, flagHeartbeatURL, heartbeat, envHeartbeatURL)
 	if !heartbeatURLUsable(cfg.heartbeatURL) {
 		return ErrInvalidHeartbeatURL
-	}
-	// The beat rides the maintenance timer, and without a poll interval there
-	// is no timer to ride. Refused rather than accepted, because a heartbeat
-	// that cannot fire is reported by the monitor as the service being down
-	if cfg.heartbeatURL != "" && cfg.pollInterval <= 0 {
-		return ErrHeartbeatWithoutPolling
 	}
 
 	return applyLogFlags(cmd, cfg)

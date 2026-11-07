@@ -42,6 +42,14 @@ func (s *server) pollLoop(ctx context.Context) {
 		s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 	}
 
+	// The beat is this loop's own, not the dispatch's. It has to carry on
+	// while there is no work, while background work is paused and while
+	// reaction polling is switched off, because none of those is an outage -
+	// and it still stops if the loop wedges, which is the whole point, since
+	// nothing here runs on another goroutine
+	beats, stopBeating := s.heartbeatBeats()
+	defer stopBeating()
+
 	s.logPollInterval(interval)
 	for {
 		delay, err := s.nextMaintenanceDelay(ctx, interval)
@@ -58,6 +66,8 @@ func (s *server) pollLoop(ctx context.Context) {
 				s.logPollInterval(interval)
 			case <-s.workQueueChanged:
 				s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
+			case <-beats:
+				s.pingHeartbeat(ctx)
 			}
 
 			continue
@@ -79,6 +89,9 @@ func (s *server) pollLoop(ctx context.Context) {
 			// an earlier automatic dispatch is waiting for its retry boundary.
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
+		case <-beats:
+			timer.Stop()
+			s.pingHeartbeat(ctx)
 		case <-timer.C:
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
@@ -102,13 +115,6 @@ func (s *server) tryDispatchMaintenanceQueue(
 	err := s.dispatchMaintenanceQueue(ctx)
 
 	s.metrics.MaintenanceCycleDuration.Observe(time.Since(started).Seconds())
-
-	// Before the outcome is read, and whatever it was. The beat says the lane
-	// turned, not that the turn did what it wanted: a job that keeps failing
-	// is counted and logged below, and under the panel its error travels all
-	// the way up here, so suppressing the beat for it would go quiet about a
-	// process that is running and retrying - correctness reported as liveness
-	s.pingHeartbeat(ctx)
 
 	if err == nil {
 		s.metrics.MaintenanceCycles.WithLabelValues(metrics.ResultSuccess).Inc()
@@ -147,17 +153,7 @@ func (s *server) nextMaintenanceDelay(
 	fallback time.Duration,
 ) (*time.Duration, error) {
 	if s.backgroundWorkPaused() {
-		// Keep the timer rather than parking the loop. Dispatch returns at
-		// once while paused, so this leases nothing, but it is what keeps the
-		// heartbeat beating: a service paused on purpose is idle, not down,
-		// and a monitor cannot tell the difference from silence. With no poll
-		// interval there is no timer to keep, which is why a heartbeat is
-		// refused in that configuration
-		if fallback <= 0 {
-			return nil, nil
-		}
-
-		return &fallback, nil
+		return nil, nil
 	}
 	now := time.Now().UTC()
 	next, err := s.store.NextQueueAvailability(ctx, workqueue.LaneMaintenance, now)
@@ -194,9 +190,11 @@ func (s *server) dispatchMaintenanceQueue(ctx context.Context) error {
 		return s.dispatchDurableMaintenance(ctx)
 	}
 	s.maintainPanel(ctx)
-	s.runSweep(ctx)
 
-	return nil
+	// Returned rather than swallowed, so a sweep that failed reaches the
+	// cycle's result label. While runSweep absorbed it, a 401 on the
+	// installation list was counted as a successful turn
+	return s.runSweep(ctx)
 }
 
 func (s *server) WakeQueue(lane workqueue.Lane) {
@@ -260,24 +258,23 @@ func (s *server) logPollInterval(interval time.Duration) {
 	s.logger.Info("sweeping reactions", "interval", interval.String())
 }
 
-// runSweep sweeps once and says in the log how it went.
+// runSweep sweeps once and hands its outcome back.
 //
 // It reports no metric of its own. A sweep is one way the maintenance lane
-// spends a turn and only reachable without a panel, so the series belong to
-// the lane, which tryDispatchMaintenanceQueue measures on both branches.
-func (s *server) runSweep(ctx context.Context) {
+// spends a turn and is only reachable without a panel, so the series belong to
+// the lane, which tryDispatchMaintenanceQueue measures on both branches. The
+// error goes with them rather than being logged and dropped here, which is
+// what made a failed sweep register as a successful turn.
+func (s *server) runSweep(ctx context.Context) error {
 	started := time.Now()
 
-	err := s.sweep(ctx)
-	elapsed := time.Since(started)
-
-	if err != nil {
-		s.logger.Error("sweep failed", "error", err, "duration", elapsed.String())
-
-		return
+	if err := s.sweep(ctx); err != nil {
+		return err
 	}
 
-	s.logger.Debug("sweep complete", "duration", elapsed.String())
+	s.logger.Debug("sweep complete", "duration", time.Since(started).String())
+
+	return nil
 }
 
 // sweep polls every repository the App is installed on.

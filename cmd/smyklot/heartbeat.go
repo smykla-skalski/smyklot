@@ -16,6 +16,30 @@ import (
 // reactions.
 const heartbeatTimeout = 10 * time.Second
 
+// defaultHeartbeatInterval is how often the lane beats.
+//
+// Independent of the poll interval on purpose. The beat answers "is this loop
+// still turning", which stays a question worth asking when reaction polling is
+// switched off and when background work is paused. Set the monitor's grace
+// period to a few multiples of this.
+const defaultHeartbeatInterval = time.Minute
+
+// heartbeatBeats returns the channel pollLoop beats on and a function to stop
+// it.
+//
+// With no heartbeat configured the channel is nil, and a receive on a nil
+// channel blocks for ever - so the select case is inert rather than something
+// every arm of the loop has to ask about.
+func (s *server) heartbeatBeats() (<-chan time.Time, func()) {
+	if s.cfg.heartbeatURL == "" {
+		return nil, func() {}
+	}
+
+	ticker := time.NewTicker(s.heartbeatInterval)
+
+	return ticker.C, ticker.Stop
+}
+
 // heartbeatClient follows no redirect.
 //
 // The token is in the URL, so a 302 would hand it to whatever host the
@@ -45,17 +69,18 @@ func heartbeatCause(err error) error {
 	return err
 }
 
-// pingHeartbeat tells an external monitor that the maintenance lane turned.
+// pingHeartbeat tells an external monitor that the maintenance loop is turning.
 //
-// This is liveness, not correctness: the alert fires when nothing arrives
-// inside the monitor's grace period, so a tick that found no work, or one
-// taken while background work is paused, still has to ping. What a sweep
-// actually did is recorded in the metrics and the log beside it.
+// This is liveness, not correctness. The alert fires when nothing arrives
+// inside the monitor's grace period, so the beat must survive everything that
+// is not an outage: no work to do, background work paused, reaction polling
+// switched off, and a job that keeps failing. What the lane actually did is in
+// the metrics and the log instead.
 //
-// It hangs off tryDispatchMaintenanceQueue rather than runSweep because
-// runSweep only runs where there is no panel. A deployment with a panel takes
-// the durable queue instead, so a heartbeat there would never have fired - and
-// a heartbeat that is never sent reads as an outage.
+// That is why pollLoop beats on its own ticker rather than at the end of a
+// dispatch. Coupled to the dispatch it would have gone quiet whenever the lane
+// had nothing to do, and under the panel a single failing job - whose error
+// travels all the way up - would have silenced it while the loop kept retrying.
 //
 // A failed ping is logged and nothing else. The monitor's grace period is what
 // tolerates one, and a service that stopped answering comments because its

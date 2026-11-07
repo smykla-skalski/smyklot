@@ -84,19 +84,11 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	})
 
 	// A heartbeat the monitor never hears from is read as the service being
-	// down, so both ways of configuring one that cannot fire are refused here
-	// rather than at the first tick
+	// down, so an address that cannot be dialled is refused here rather than
+	// at the first beat
 	It("should refuse a heartbeat address with no host in it", func() {
 		_, err := loadServe(map[string]string{envHeartbeatURL: "https://:443/beat"})
 		Expect(err).To(MatchError(ErrInvalidHeartbeatURL))
-	})
-
-	It("should refuse a heartbeat with reaction polling switched off", func() {
-		_, err := loadServe(map[string]string{
-			envHeartbeatURL: "https://uptime.example.com/beat",
-			envPollInterval: "0",
-		})
-		Expect(err).To(MatchError(ErrHeartbeatWithoutPolling))
 	})
 
 	It("should default the listen address, path, and interval", func() {

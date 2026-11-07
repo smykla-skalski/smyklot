@@ -47,11 +47,12 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 		DeferCleanup(monitor.Close)
 	})
 
-	// build wires a service and points its heartbeat wherever the spec wants
-	build := func(heartbeatURL string) *server {
+	// buildWith wires a service with no panel against the GitHub handler the
+	// spec wants, and points its heartbeat wherever the spec wants
+	buildWith := func(heartbeatURL string, api http.Handler) *server {
 		GinkgoHelper()
 
-		endpoint := httptest.NewServer(newGitHubStub())
+		endpoint := httptest.NewServer(api)
 		DeferCleanup(endpoint.Close)
 
 		logs = &syncBuffer{}
@@ -74,7 +75,16 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { Expect(srv.Close()).To(Succeed()) })
 
+		// Short enough that a spec can watch several beats
+		srv.heartbeatInterval = 10 * time.Millisecond
+
 		return srv
+	}
+
+	build := func(heartbeatURL string) *server {
+		GinkgoHelper()
+
+		return buildWith(heartbeatURL, newGitHubStub())
 	}
 
 	// tick runs one maintenance dispatch and reports the retry boundary it
@@ -86,6 +96,24 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 		srv.tryDispatchMaintenanceQueue(GinkgoT().Context(), &retryAt)
 
 		return retryAt
+	}
+
+	// runLoop starts the real loop, which is the only place the beat lives
+	runLoop := func(srv *server) {
+		GinkgoHelper()
+
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		stopped := make(chan struct{})
+
+		go func() {
+			defer close(stopped)
+			srv.pollLoop(ctx)
+		}()
+
+		DeferCleanup(func() {
+			cancel()
+			Eventually(stopped).Should(BeClosed())
+		})
 	}
 
 	// scrape returns what a Prometheus scrape of this service would read
@@ -101,145 +129,146 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 		return rec.Body.String()
 	}
 
-	It("counts and times a turn of the maintenance lane", func() {
-		srv := build("")
+	Describe("the beat", func() {
+		It("beats while the lane has nothing to do", func() {
+			runLoop(build(monitor.URL))
 
-		tick(srv)
-
-		body := scrape(srv)
-		Expect(body).To(ContainSubstring(`smyklot_maintenance_cycles_total{result="success"} 1`))
-		Expect(body).To(ContainSubstring("smyklot_maintenance_cycle_duration_seconds_count 1"))
-	})
-
-	It("counts a turn that did no work", func() {
-		// The same hole the heartbeat had, and the reason the old
-		// sweeps_total read zero for ever on a deployment with a panel: a
-		// count kept inside runSweep only moves where there is no panel
-		srv := build("")
-		srv.runtimeBackgroundWorkPaused = true
-
-		tick(srv)
-
-		Expect(scrape(srv)).To(ContainSubstring(
-			`smyklot_maintenance_cycles_total{result="success"} 1`))
-	})
-
-	It("pings the monitor after a maintenance tick", func() {
-		tick(build(monitor.URL))
-
-		Expect(hits.Load()).To(BeNumerically("==", 1))
-	})
-
-	It("pings the monitor on a tick that did no work", func() {
-		// The one that matters, and it says two things. The ping sits above
-		// everything the lane might do, so it cannot end up on a branch that
-		// a given deployment never takes - a panel sends the lane through the
-		// durable queue and never reaches runSweep at all. And a paused
-		// service is idle on purpose, so it has to keep beating or pausing
-		// background work would page somebody
-		srv := build(monitor.URL)
-		srv.runtimeBackgroundWorkPaused = true
-
-		tick(srv)
-
-		Expect(hits.Load()).To(BeNumerically("==", 1))
-	})
-
-	It("sends nothing when no heartbeat is configured", func() {
-		tick(build(""))
-
-		Expect(hits.Load()).To(BeZero())
-	})
-
-	It("keeps the lane going when the monitor refuses the ping", func() {
-		status.Store(http.StatusInternalServerError)
-
-		retryAt := tick(build(monitor.URL))
-
-		Expect(hits.Load()).To(BeNumerically("==", 1))
-		Expect(retryAt.IsZero()).To(BeTrue())
-		Expect(logs.find("heartbeat refused")).NotTo(BeNil())
-	})
-
-	It("keeps the lane going when the monitor cannot be reached", func() {
-		retryAt := tick(build(unreachableHeartbeat))
-
-		Expect(retryAt.IsZero()).To(BeTrue())
-		Expect(logs.find("could not send the heartbeat")).NotTo(BeNil())
-	})
-
-	It("keeps the token out of the log when the ping fails", func() {
-		// A *url.Error prints the URL it failed on, and the token is in that
-		// URL. The redactor matches the configured string exactly, which a
-		// re-serialised URL need not, so the address is stripped at source
-		tick(build(unreachableHeartbeat))
-
-		line := logs.find("could not send the heartbeat")
-		Expect(line).NotTo(BeNil())
-
-		text, ok := line["error"].(string)
-		Expect(ok).To(BeTrue())
-		Expect(text).NotTo(ContainSubstring(heartbeatToken))
-		Expect(text).NotTo(ContainSubstring("/api/v1/heartbeat"))
-	})
-
-	It("does not follow a redirect, so the token stays on one host", func() {
-		// A 302 would hand the token to whatever host the response names
-		elsewhere := httptest.NewServer(http.HandlerFunc(
-			func(w http.ResponseWriter, _ *http.Request) {
-				leaked.Add(1)
-				w.WriteHeader(http.StatusOK)
-			},
-		))
-		DeferCleanup(elsewhere.Close)
-
-		redirector := httptest.NewServer(http.HandlerFunc(
-			func(w http.ResponseWriter, r *http.Request) {
-				http.Redirect(w, r, elsewhere.URL, http.StatusFound)
-			},
-		))
-		DeferCleanup(redirector.Close)
-
-		tick(build(redirector.URL + "/api/v1/heartbeat/" + heartbeatToken))
-
-		Expect(leaked.Load()).To(BeZero())
-		Expect(logs.find("heartbeat refused")).NotTo(BeNil())
-	})
-
-	It("keeps beating while background work is paused", func() {
-		// Driven through pollLoop rather than the dispatch helper, because
-		// pausing used to park the loop on a select with no timer: the lane
-		// stopped turning, the beat stopped with it, and a service idle on
-		// purpose was reported as an outage
-		srv := build(monitor.URL)
-		srv.runtimeBackgroundWorkPaused = true
-		srv.runtimePollInterval = 20 * time.Millisecond
-
-		ctx, cancel := context.WithCancel(GinkgoT().Context())
-		stopped := make(chan struct{})
-
-		go func() {
-			defer close(stopped)
-			srv.pollLoop(ctx)
-		}()
-		DeferCleanup(func() {
-			cancel()
-			Eventually(stopped).Should(BeClosed())
+			Eventually(hits.Load).Should(BeNumerically(">=", 2))
 		})
 
-		Eventually(hits.Load).Should(BeNumerically(">=", 2))
+		It("beats while background work is paused", func() {
+			// Paused is idle on purpose, not down, and a monitor cannot tell
+			// either apart from silence
+			srv := build(monitor.URL)
+			srv.runtimeBackgroundWorkPaused = true
+
+			runLoop(srv)
+
+			Eventually(hits.Load).Should(BeNumerically(">=", 2))
+		})
+
+		It("beats with reaction polling switched off", func() {
+			// The beat is the loop's own ticker, so it does not depend on the
+			// poll interval - which an operator can set to zero at runtime,
+			// long after any check at startup
+			srv := build(monitor.URL)
+			srv.runtimePollInterval = 0
+
+			runLoop(srv)
+
+			Eventually(hits.Load).Should(BeNumerically(">=", 2))
+		})
+
+		It("sends nothing when no heartbeat is configured", func() {
+			runLoop(build(""))
+
+			Consistently(hits.Load, 150*time.Millisecond).Should(BeZero())
+		})
+
+		It("keeps beating when the monitor refuses the ping", func() {
+			status.Store(http.StatusInternalServerError)
+
+			runLoop(build(monitor.URL))
+
+			Eventually(hits.Load).Should(BeNumerically(">=", 2))
+			Eventually(func() map[string]any {
+				return logs.find("heartbeat refused")
+			}).ShouldNot(BeNil())
+		})
+
+		It("keeps the token out of the log when the ping fails", func() {
+			// A *url.Error prints the URL it failed on, and the token is in
+			// that URL. The redactor matches the configured string exactly,
+			// which a re-serialised URL need not, so the address is stripped
+			// at source
+			srv := build(unreachableHeartbeat)
+			srv.pingHeartbeat(GinkgoT().Context())
+
+			line := logs.find("could not send the heartbeat")
+			Expect(line).NotTo(BeNil())
+
+			text, ok := line["error"].(string)
+			Expect(ok).To(BeTrue())
+			Expect(text).NotTo(ContainSubstring(heartbeatToken))
+			Expect(text).NotTo(ContainSubstring("/api/v1/heartbeat"))
+		})
+
+		It("does not follow a redirect, so the token stays on one host", func() {
+			// A 302 would hand the token to whatever host the response names
+			elsewhere := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, _ *http.Request) {
+					leaked.Add(1)
+					w.WriteHeader(http.StatusOK)
+				},
+			))
+			DeferCleanup(elsewhere.Close)
+
+			redirector := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					http.Redirect(w, r, elsewhere.URL, http.StatusFound)
+				},
+			))
+			DeferCleanup(redirector.Close)
+
+			srv := build(redirector.URL + "/api/v1/heartbeat/" + heartbeatToken)
+			srv.pingHeartbeat(GinkgoT().Context())
+
+			Expect(leaked.Load()).To(BeZero())
+			Expect(logs.find("heartbeat refused")).NotTo(BeNil())
+		})
+
+		It("sends nothing once the context is cancelled", func() {
+			// A stop must not log a missed beat on its way out
+			srv := build(monitor.URL)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			srv.pingHeartbeat(ctx)
+
+			Expect(hits.Load()).To(BeZero())
+			Expect(logs.find("could not send the heartbeat")).To(BeNil())
+		})
 	})
 
-	It("sends nothing once the context is cancelled", func() {
-		// A stop must not log a missed beat on its way out
-		srv := build(monitor.URL)
+	Describe("the cycle metrics", func() {
+		It("counts and times a turn of the maintenance lane", func() {
+			srv := build("")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		srv.pingHeartbeat(ctx)
+			tick(srv)
 
-		Expect(hits.Load()).To(BeZero())
-		Expect(logs.find("could not send the heartbeat")).To(BeNil())
+			body := scrape(srv)
+			Expect(body).To(ContainSubstring(`smyklot_maintenance_cycles_total{result="success"} 1`))
+			Expect(body).To(ContainSubstring("smyklot_maintenance_cycle_duration_seconds_count 1"))
+		})
+
+		It("counts a turn that did no work", func() {
+			// Measured above the panel branch, which is why the old
+			// sweeps_total read zero for ever on a deployment with a panel: a
+			// count kept inside runSweep only moves where there is no panel
+			srv := build("")
+			srv.runtimeBackgroundWorkPaused = true
+
+			tick(srv)
+
+			Expect(scrape(srv)).To(ContainSubstring(
+				`smyklot_maintenance_cycles_total{result="success"} 1`))
+		})
+
+		It("counts a sweep that failed as a failed turn", func() {
+			// runSweep used to log its error and return nothing, so a 401 on
+			// the installation list arrived here as a successful turn
+			refusing := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+			})
+
+			srv := buildWith("", refusing)
+
+			retryAt := tick(srv)
+
+			Expect(scrape(srv)).To(ContainSubstring(
+				`smyklot_maintenance_cycles_total{result="failure"} 1`))
+			Expect(retryAt.IsZero()).To(BeFalse())
+		})
 	})
 })
 

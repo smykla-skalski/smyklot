@@ -133,6 +133,10 @@ type server struct {
 	registry *prometheus.Registry
 	metrics  *metrics.Metrics
 
+	// heartbeatInterval is how often pollLoop beats. A field rather than the
+	// constant so a spec can watch several beats without waiting minutes
+	heartbeatInterval time.Duration
+
 	// readiness answers whether GitHub is reachable, kept current by probeLoop
 	readiness *readiness
 
@@ -216,6 +220,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		pendingCIGateChanged:     make(chan struct{}, 1),
 		migrationRetryDelay:      gate.RetryDelay,
 		registry:                 registry,
+		heartbeatInterval:        defaultHeartbeatInterval,
 		metrics:                  metrics.New(registry),
 		configs:                  newRepoConfigCache(),
 		owners:                   newRepoCache(codeownersTTL, bot.FetchCodeowners),
