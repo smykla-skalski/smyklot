@@ -1,0 +1,79 @@
+# Keeps the committed SCIP indexes in scip/ current with main.
+#
+# A pull request only proves the indexers still run. After a merge, the indexes
+# are rebuilt and committed onto main as the Smyklot App, the one actor main lets
+# push directly. That commit touches scip/ alone, which these paths leave out, so
+# it does not trigger this workflow again.
+#
+# Every refresh is a new commit of about 7 MB compressed: scip-go stamps each
+# symbol with the commit it indexed and orders symbols differently between runs,
+# so no two runs agree byte for byte, and only changes to what the indexes
+# describe start one.
+name: SCIP
+
+on:
+  push:
+    branches: [main]
+    paths: &indexed
+      - '**.go'
+      - go.mod
+      - go.sum
+      - internal/panel/frontend/**
+      - .mise.toml
+      - .github/workflows/scip.yaml
+      - scripts/commit-scip.sh
+  pull_request:
+    branches: [main]
+    paths: *indexed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer commit on main supersedes an older refresh: its parent would no longer
+# be the head, so the older run's commit could not land anyway.
+concurrency:
+  group: scip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  index:
+    name: index
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install the toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          go-cache: scip
+
+      - name: Restore the panel's dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: internal/panel/frontend/node_modules
+          key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      - name: Index the code
+        run: mise run scip
+
+      - name: Generate App Token
+        id: app-token
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SMYKLOT_CLIENT_ID || 'Iv23liMyF31aNYay8IXy' }}
+          private-key: ${{ secrets.SMYKLOT_APP_PRIVATE_KEY }}
+
+      - name: Commit the indexes onto main
+        if: steps.app-token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.sha }}
+        run: ./scripts/commit-scip.sh

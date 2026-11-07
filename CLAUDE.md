@@ -18,6 +18,7 @@ Go + Ginkgo/Gomega, deployed as Docker-based GitHub Action.
 - Lint (markdown): `mise run lint:markdown`
 - Lint (shell): `mise run lint:shell`
 - Pre-commit: `mise run ci`
+- SCIP indexes: `mise run scip` regenerates `scip/go.scip` and `scip/panel.scip` (Svelte included). They are committed, and `scip.yaml` refreshes them on main as the Smyklot App after each merge that touches indexed code
 
 ## Architecture
 
