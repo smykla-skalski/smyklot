@@ -16,6 +16,8 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    # The index refresh `scip.yaml` commits onto main changes no source.
+    paths-ignore: [scip/**]
   pull_request:
     branches: [main]
   schedule:

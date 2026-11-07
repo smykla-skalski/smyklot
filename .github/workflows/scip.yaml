@@ -1,0 +1,129 @@
+# Keeps the committed SCIP indexes in scip/ current with main.
+#
+# A pull request only proves the indexers still run. After a merge, the indexes
+# are rebuilt and committed onto main as the Smyklot App, the one actor main lets
+# push directly. That commit touches scip/ alone, which the push filter leaves
+# out, so it does not trigger this workflow again.
+#
+# Every other push to main starts a refresh, documentation included. The commit
+# lands only while its parent is still the head, so a refresh survives a newer
+# push only if that push starts the refresh that replaces it. A filter on indexed
+# paths would let a documentation merge overtake a running refresh and leave the
+# indexes stale with nothing scheduled to fix them.
+#
+# Every refresh is a new commit of about 7 MB compressed: scip-go stamps each
+# symbol with the commit it indexed and orders symbols differently between runs,
+# so no two runs agree byte for byte.
+name: SCIP
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: [scip/**]
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - internal/panel/frontend/**
+      - .mise.toml
+      - .github/workflows/scip.yaml
+      - scripts/commit-scip.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # To see whether a Release run is active before committing onto main.
+  actions: read
+
+# A newer commit on main supersedes an older refresh: its parent would no longer
+# be the head, so the older run's commit could not land anyway.
+concurrency:
+  group: scip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  index:
+    name: index
+    runs-on: ubuntu-26.04
+    # Room to wait out a release, deploy included.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install the toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          go-cache: scip
+
+      - name: Restore the panel's dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: internal/panel/frontend/node_modules
+          key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      # The toolchain's bundle cache restores the two files that satisfy
+      # `panel:frontend:install`'s outputs, so on a miss of the cache above mise
+      # would skip the install and leave the indexer without dependencies. The
+      # script compares its stamp instead, and a restored directory makes it a no-op.
+      - name: Install the panel's dependencies
+        run: ./scripts/install-panel-frontend.sh
+
+      - name: Index the code
+        run: mise run scip
+
+      # Release checks out the commit it was started for, and semantic-release
+      # declines to publish from a checkout behind main. A refresh landing while
+      # Release waits on Test would make it skip silently, so a refresh waits
+      # until no Release run is active. A release commit is a push of its own and
+      # starts the refresh that replaces this one.
+      #
+      # ponytail: a scheduled or dispatched Release that starts after this check
+      # can still be overtaken, and its unreleased commits wait for the next day's
+      # run. A shared concurrency group is not the fix: GitHub cancels a pending
+      # run when another queues in its group, and the pending run can be Release.
+      - name: Wait for any release in progress
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Counted per status by the API, so finished runs cannot crowd an active
+        # one out of a page. Each count is a plain assignment, where a failed
+        # query stops the step instead of reading as a release in progress.
+        #
+        # Only runs created in the last six hours count, the most a job may run.
+        # GitHub still lists three runs from August 2026 as in progress, and
+        # counting them would hold every refresh until the job timed out.
+        run: |
+          while :; do
+            since="$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+            active=0
+            for status in requested waiting pending queued in_progress; do
+              count="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yaml/runs?status=$status&created=%3E%3D$since&per_page=1" --jq .total_count)"
+              active=$((active + count))
+            done
+            [ "$active" -eq 0 ] && break
+            echo "Waiting for $active active release run(s)"
+            sleep 30
+          done
+
+      - name: Generate App Token
+        id: app-token
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SMYKLOT_CLIENT_ID || 'Iv23liMyF31aNYay8IXy' }}
+          private-key: ${{ secrets.SMYKLOT_APP_PRIVATE_KEY }}
+
+      - name: Commit the indexes onto main
+        if: steps.app-token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.sha }}
+        run: ./scripts/commit-scip.sh

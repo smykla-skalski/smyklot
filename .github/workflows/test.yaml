@@ -3,6 +3,9 @@ name: Test
 on:
   push:
     branches: [main]
+    # The index refresh `scip.yaml` commits onto main changes no source, and the
+    # commit it was built from has already been tested.
+    paths-ignore: [scip/**]
   pull_request:
     branches: [main]
   # The release gate is this workflow, called. A release must have passed what a
@@ -90,7 +93,7 @@ jobs:
         run: mise run test:service:shard sqlite ${{ matrix.shard }}
       - name: Save service timing reports
         if: always() && matrix.shard
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-sqlite-${{ matrix.shard }}-timings
           path: tmp/service-sqlite/shard-${{ matrix.shard }}/*.json
@@ -118,7 +121,7 @@ jobs:
         run: mise run test:storage:shard ${{ matrix.shard }}
       - name: Save SQLite timing reports
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sqlite-${{ matrix.shard }}-timings
           path: tmp/storage/shard-${{ matrix.shard }}/*.json
@@ -150,7 +153,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        image: postgres:18-alpine@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
         env:
           POSTGRES_USER: smyklot
           POSTGRES_PASSWORD: smyklot
@@ -195,7 +198,7 @@ jobs:
 
       - name: Save service timing reports
         if: always() && matrix.shard
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: service-postgres-${{ matrix.shard }}-timings
           path: tmp/service-postgres/shard-${{ matrix.shard }}/*.json

@@ -27,7 +27,7 @@
     "@storybook/addon-svelte-csf": "5.1.6",
     "@storybook/svelte": "10.6.5",
     "@storybook/sveltekit": "10.6.5",
-    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@testing-library/svelte": "5.4.2",
@@ -67,6 +67,7 @@
     "runed": "^0.38.0"
   },
   "overrides": {
+    "minimatch": "^11.0.1",
     "runed": {
       "@sveltejs/kit": "$@sveltejs/kit"
     },
