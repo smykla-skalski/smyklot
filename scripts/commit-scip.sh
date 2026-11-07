@@ -2,10 +2,12 @@
 # Commits the regenerated scip/*.scip onto main, as one child of the commit they
 # were built from.
 #
-# Through the Git data API rather than `git push`: main requires signed commits,
-# and GitHub signs a commit an App creates through the API. The ref update is not
-# forced, so when main has moved on since BASE this fails rather than overwriting
-# it, and the run for the newer commit carries fresher indexes anyway.
+# The Smyklot App is exempt from main's pull request, signature and history
+# rules, which is how semantic-release already pushes its unsigned release
+# commits there. Through the Git data API rather than `git push`, so the checkout
+# keeps no credential and GitHub signs the commit it creates for the App. The ref
+# update is not forced, so when main has moved on since BASE this fails rather
+# than overwriting it, and the run for the newer commit carries fresher indexes.
 set -euo pipefail
 
 : "${GH_TOKEN:?}" "${REPO:?}" "${BASE:?}"
