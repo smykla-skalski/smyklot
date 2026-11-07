@@ -85,6 +85,6 @@
     }
   ],
   "vulnerabilityAlerts": {"automerge": false},
-  "rebaseWhen": "conflicted",
-  "postUpdateOptions": ["gomodTidy"]
+  "postUpdateOptions": ["gomodTidy"],
+  "rebaseWhen": "conflicted"
 }
