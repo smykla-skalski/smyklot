@@ -96,9 +96,9 @@ var _ = Describe("Recovered reauthorization worker [Unit]", func() {
 		Expect(before).To(Equal(waiting), "preview and acceptance must not authorize the request")
 		switch change {
 		case "permission":
-			f.stub.codeowners = "* @someone-else\n"
+			f.stub.setCodeowners("* @someone-else\n")
 		case "head":
-			f.stub.prHead = "even-newer-head"
+			f.stub.setPullRequestHead("even-newer-head")
 		}
 		runRecoveredNotification(f)
 		after, err := f.service.store.Get(GinkgoT().Context(), waiting.ID)
