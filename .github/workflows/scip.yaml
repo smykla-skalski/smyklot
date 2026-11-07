@@ -2,19 +2,27 @@
 #
 # A pull request only proves the indexers still run. After a merge, the indexes
 # are rebuilt and committed onto main as the Smyklot App, the one actor main lets
-# push directly. That commit touches scip/ alone, which these paths leave out, so
-# it does not trigger this workflow again.
+# push directly. That commit touches scip/ alone, which the push filter leaves
+# out, so it does not trigger this workflow again.
+#
+# Every other push to main starts a refresh, documentation included. The commit
+# lands only while its parent is still the head, so a refresh survives a newer
+# push only if that push starts the refresh that replaces it. A filter on indexed
+# paths would let a documentation merge overtake a running refresh and leave the
+# indexes stale with nothing scheduled to fix them.
 #
 # Every refresh is a new commit of about 7 MB compressed: scip-go stamps each
 # symbol with the commit it indexed and orders symbols differently between runs,
-# so no two runs agree byte for byte, and only changes to what the indexes
-# describe start one.
+# so no two runs agree byte for byte.
 name: SCIP
 
 on:
   push:
     branches: [main]
-    paths: &indexed
+    paths-ignore: [scip/**]
+  pull_request:
+    branches: [main]
+    paths:
       - '**.go'
       - go.mod
       - go.sum
@@ -22,9 +30,6 @@ on:
       - .mise.toml
       - .github/workflows/scip.yaml
       - scripts/commit-scip.sh
-  pull_request:
-    branches: [main]
-    paths: *indexed
   workflow_dispatch:
 
 permissions:
@@ -58,6 +63,13 @@ jobs:
         with:
           path: internal/panel/frontend/node_modules
           key: ${{ runner.os }}-panel-npm-${{ hashFiles('internal/panel/frontend/package-lock.json') }}
+
+      # The toolchain's bundle cache restores the two files that satisfy
+      # `panel:frontend:install`'s outputs, so on a miss of the cache above mise
+      # would skip the install and leave the indexer without dependencies. The
+      # script compares its stamp instead, and a restored directory makes it a no-op.
+      - name: Install the panel's dependencies
+        run: ./scripts/install-panel-frontend.sh
 
       - name: Index the code
         run: mise run scip
