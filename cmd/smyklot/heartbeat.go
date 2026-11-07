@@ -96,10 +96,10 @@ func (s *server) pingHeartbeat(ctx context.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, heartbeatTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, heartbeatTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.heartbeatURL, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, s.cfg.heartbeatURL, nil)
 	if err != nil {
 		s.logger.Warn("could not build the heartbeat request", "error", heartbeatCause(err))
 
@@ -108,6 +108,14 @@ func (s *server) pingHeartbeat(ctx context.Context) {
 
 	resp, err := heartbeatClient.Do(req)
 	if err != nil {
+		// A stop cancels the request already in flight, which the check above
+		// cannot catch and which is not a missed beat. Read from the parent
+		// rather than reqCtx, because reqCtx's own deadline expiring means a
+		// monitor that stopped answering, and that is worth saying
+		if ctx.Err() != nil {
+			return
+		}
+
 		s.logger.Warn("could not send the heartbeat", "error", heartbeatCause(err))
 
 		return

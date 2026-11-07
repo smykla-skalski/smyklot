@@ -254,6 +254,34 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 			Expect(logs.find("heartbeat refused")).NotTo(BeNil())
 		})
 
+		It("says nothing when a stop cancels a ping in flight", func() {
+			// The check before the request cannot catch this one: the beat is
+			// already out when the stop arrives, and the cancellation it
+			// returns is not a monitor that went away
+			arrived := make(chan struct{})
+
+			blocking := httptest.NewServer(http.HandlerFunc(
+				func(_ http.ResponseWriter, r *http.Request) {
+					close(arrived)
+					<-r.Context().Done()
+				},
+			))
+			DeferCleanup(blocking.Close)
+
+			srv := build(blocking.URL + "/api/v1/heartbeat/" + heartbeatToken)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			go func() {
+				<-arrived
+				cancel()
+			}()
+
+			srv.pingHeartbeat(ctx)
+
+			Expect(logs.find("could not send the heartbeat")).To(BeNil())
+		})
+
 		It("sends nothing once the context is cancelled", func() {
 			// A stop must not log a missed beat on its way out
 			srv := build(monitor.URL)
@@ -319,6 +347,10 @@ var _ = DescribeTable("Heartbeat URL validation [Unit]",
 	Entry("no scheme", "uptime.example.com/beat", false),
 	Entry("no host", "https:///beat", false),
 	Entry("a port with no host", "https://:443/beat", false),
+	// url.Parse refuses a port that is not a number, but not one out of range
+	Entry("a port above the range", "https://uptime.example.com:99999/beat", false),
+	Entry("port zero", "https://uptime.example.com:0/beat", false),
+	Entry("the top of the range", "https://uptime.example.com:65535/beat", true),
 	Entry("a scheme nothing here can send", "ftp://uptime.example.com/beat", false),
 	Entry("not a URL at all", "http://[::1", false),
 )

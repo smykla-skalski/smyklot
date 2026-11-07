@@ -595,10 +595,37 @@ func heartbeatURLUsable(raw string) bool {
 		return false
 	}
 
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
 	// Hostname rather than Host, because "https://:443/beat" has a non-empty
 	// Host holding only a port. The client would dial an empty host, so the
 	// monitor would never hear from it
-	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != ""
+	if parsed.Hostname() == "" {
+		return false
+	}
+
+	return heartbeatPortDialable(parsed.Port())
+}
+
+// heartbeatPortDialable reports whether a URL's port can be dialled. An empty
+// port is the scheme's default, so it passes.
+//
+// url.Parse refuses a port that is not a number, and a negative one with it,
+// but not one out of range: ":99999" and ":0" arrive from it as valid URLs
+// that nothing can connect to.
+func heartbeatPortDialable(port string) bool {
+	if port == "" {
+		return true
+	}
+
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+
+	return number > 0 && number <= 65535
 }
 
 // applyLogFlags resolves how the service writes its log lines.
