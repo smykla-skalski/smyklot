@@ -514,7 +514,7 @@ The webhook port carries `GET /healthz` for an ingress or tunnel that needs one 
 
 Liveness and readiness are separate because a restart cannot fix GitHub being down. The service checks GitHub every 30 seconds and starts unready, so it takes no traffic until its credentials have been proven.
 
-Metrics are prefixed `smyklot_`: `webhook_requests_total{event,outcome}`, `deliveries_total{action,result}`, `delivery_duration_seconds`, `deliveries_in_flight`, `queue_depth`, `queue_capacity`, `sweeps_total{result}`, `sweep_duration_seconds` and `ready`. A rising `outcome="unsigned"` means a rotated secret or someone probing the port; a rising `outcome="refused"` means the queue is full.
+Metrics are prefixed `smyklot_`: `webhook_requests_total{event,outcome}`, `deliveries_total{action,result}`, `delivery_duration_seconds`, `deliveries_in_flight`, `queue_depth`, `queue_capacity`, `maintenance_cycles_total{result}`, `maintenance_cycle_duration_seconds` and `ready`. A rising `outcome="unsigned"` means a rotated secret or someone probing the port; a rising `outcome="refused"` means the queue is full.
 
 Every log line about a delivery carries its `delivery_id`, along with the repository, pull request and comment action, so one webhook's whole trail can be found by that identifier. A delivery is answered before its command runs, so GitHub's own log shows a success either way; `/failures` and the `result="failure"` counter are how a failure afterwards stays visible.
 

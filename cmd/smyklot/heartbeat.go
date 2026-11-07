@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -13,6 +15,35 @@ import (
 // that has stopped answering must not be able to hold the lane that answers
 // reactions.
 const heartbeatTimeout = 10 * time.Second
+
+// heartbeatClient follows no redirect.
+//
+// The token is in the URL, so a 302 would hand it to whatever host the
+// response names. Refusing to follow keeps the credential on the one host the
+// operator configured, and turns a redirect into a status this logs about
+// rather than a silent leak.
+var heartbeatClient = &http.Client{
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
+// heartbeatCause is a transport error with the address it was dialling
+// stripped off.
+//
+// A *url.Error prints the URL it failed on, and here the URL is the token. The
+// redactor catches the configured string exactly, which a re-serialised URL
+// need not match, so the address is removed at the source rather than trusted
+// to be masked downstream. What is left is the part worth reading: connection
+// refused, no such host, deadline exceeded.
+func heartbeatCause(err error) error {
+	var urlErr *url.Error
+	for errors.As(err, &urlErr) {
+		err = urlErr.Err
+	}
+
+	return err
+}
 
 // pingHeartbeat tells an external monitor that the maintenance lane turned.
 //
@@ -45,14 +76,14 @@ func (s *server) pingHeartbeat(ctx context.Context) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.cfg.heartbeatURL, nil)
 	if err != nil {
-		s.logger.Warn("could not build the heartbeat request", "error", err)
+		s.logger.Warn("could not build the heartbeat request", "error", heartbeatCause(err))
 
 		return
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := heartbeatClient.Do(req)
 	if err != nil {
-		s.logger.Warn("could not send the heartbeat", "error", err)
+		s.logger.Warn("could not send the heartbeat", "error", heartbeatCause(err))
 
 		return
 	}
@@ -63,7 +94,9 @@ func (s *server) pingHeartbeat(ctx context.Context) {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode >= http.StatusBadRequest {
+	// Only 2xx counts. A redirect is not followed, so it arrives here as a 3xx
+	// and means the URL is wrong rather than that the beat landed
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		s.logger.Warn("heartbeat refused", "status", resp.StatusCode)
 
 		return

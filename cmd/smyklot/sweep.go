@@ -86,17 +86,37 @@ func (s *server) pollLoop(ctx context.Context) {
 	}
 }
 
+// tryDispatchMaintenanceQueue turns the maintenance lane once and records how
+// it went.
+//
+// This is where the lane is measured, rather than runSweep, because runSweep is
+// only how a deployment without a panel spends a turn. One with a panel takes
+// the durable queue instead, so a count kept down there never moved in
+// production at all.
 func (s *server) tryDispatchMaintenanceQueue(
 	ctx context.Context,
 	retryAt *time.Time,
 ) {
+	started := time.Now()
+
 	err := s.dispatchMaintenanceQueue(ctx)
+
+	s.metrics.MaintenanceCycleDuration.Observe(time.Since(started).Seconds())
+
+	// Before the outcome is read, and whatever it was. The beat says the lane
+	// turned, not that the turn did what it wanted: a job that keeps failing
+	// is counted and logged below, and under the panel its error travels all
+	// the way up here, so suppressing the beat for it would go quiet about a
+	// process that is running and retrying - correctness reported as liveness
+	s.pingHeartbeat(ctx)
+
 	if err == nil {
+		s.metrics.MaintenanceCycles.WithLabelValues(metrics.ResultSuccess).Inc()
 		*retryAt = time.Time{}
-		s.pingHeartbeat(ctx)
 
 		return
 	}
+	s.metrics.MaintenanceCycles.WithLabelValues(metrics.ResultFailure).Inc()
 	*retryAt = maintenanceRetryBoundary(time.Now().UTC())
 	s.logger.Error(
 		"dispatch maintenance queue",
@@ -127,7 +147,17 @@ func (s *server) nextMaintenanceDelay(
 	fallback time.Duration,
 ) (*time.Duration, error) {
 	if s.backgroundWorkPaused() {
-		return nil, nil
+		// Keep the timer rather than parking the loop. Dispatch returns at
+		// once while paused, so this leases nothing, but it is what keeps the
+		// heartbeat beating: a service paused on purpose is idle, not down,
+		// and a monitor cannot tell the difference from silence. With no poll
+		// interval there is no timer to keep, which is why a heartbeat is
+		// refused in that configuration
+		if fallback <= 0 {
+			return nil, nil
+		}
+
+		return &fallback, nil
 	}
 	now := time.Now().UTC()
 	next, err := s.store.NextQueueAvailability(ctx, workqueue.LaneMaintenance, now)
@@ -230,27 +260,23 @@ func (s *server) logPollInterval(interval time.Duration) {
 	s.logger.Info("sweeping reactions", "interval", interval.String())
 }
 
-// runSweep sweeps once and records how it went.
+// runSweep sweeps once and says in the log how it went.
 //
-// The duration matters as much as the outcome: a sweep that grows past the
-// interval delays every one after it, and this is where that shows up before
-// reactions start arriving late.
+// It reports no metric of its own. A sweep is one way the maintenance lane
+// spends a turn and only reachable without a panel, so the series belong to
+// the lane, which tryDispatchMaintenanceQueue measures on both branches.
 func (s *server) runSweep(ctx context.Context) {
 	started := time.Now()
 
 	err := s.sweep(ctx)
 	elapsed := time.Since(started)
 
-	s.metrics.SweepDuration.Observe(elapsed.Seconds())
-
 	if err != nil {
-		s.metrics.Sweeps.WithLabelValues(metrics.ResultFailure).Inc()
 		s.logger.Error("sweep failed", "error", err, "duration", elapsed.String())
 
 		return
 	}
 
-	s.metrics.Sweeps.WithLabelValues(metrics.ResultSuccess).Inc()
 	s.logger.Debug("sweep complete", "duration", elapsed.String())
 }
 

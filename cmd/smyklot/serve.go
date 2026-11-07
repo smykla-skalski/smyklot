@@ -149,6 +149,11 @@ var (
 	// page somebody about a service that is working
 	ErrInvalidHeartbeatURL = errors.New("heartbeat URL must be an absolute http or https URL")
 
+	// ErrHeartbeatWithoutPolling is returned when a heartbeat is configured
+	// with reaction polling switched off. The beat rides the maintenance
+	// timer, so there would be nothing to carry it
+	ErrHeartbeatWithoutPolling = errors.New("heartbeat URL needs a non-zero poll interval")
+
 	// ErrStateConfig is returned when mandatory durable state cannot be configured.
 	ErrStateConfig = errors.New("invalid service state configuration")
 
@@ -191,38 +196,52 @@ therefore also requires SMYKLOT_PANEL_CLIENT_ID and SMYKLOT_PANEL_CLIENT_SECRET.
 }
 
 func init() {
-	serveCmd.Flags().String(flagListen, defaultListenAddress, descListen)
-	serveCmd.Flags().String(flagAdminListen, defaultAdminAddress, descAdminListen)
-	serveCmd.Flags().String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
-	serveCmd.Flags().Duration(flagPollInterval, defaultPollInterval, descPollInterval)
-	serveCmd.Flags().Duration(
-		flagPendingCIQuietPeriod,
-		defaultPendingCIQuietPeriod,
-		descPendingCIQuietPeriod,
-	)
-	serveCmd.Flags().Duration(
-		flagPathIndexInterval,
-		defaultPathIndexInterval,
-		descPathIndexInterval,
-	)
-	serveCmd.Flags().String(flagHeartbeatURL, "", descHeartbeatURL)
-	serveCmd.Flags().String(flagLogFormat, defaultLogFormat, descLogFormat)
-	serveCmd.Flags().String(flagLogLevel, defaultLogLevel, descLogLevel)
-	serveCmd.Flags().String(flagDatabase, defaultState, descDatabase)
-	serveCmd.Flags().String(flagState, "", descState)
-	_ = serveCmd.Flags().MarkDeprecated(flagState, "use --database-url")
-	serveCmd.Flags().String(flagPanelOrigin, "", descPanelOrigin)
-	serveCmd.Flags().String(flagPanelBase, defaultPanelBase, descPanelBase)
-	serveCmd.Flags().String(flagPanelState, "", descPanelState)
-	_ = serveCmd.Flags().MarkDeprecated(flagPanelState, "use --database-url")
-	serveCmd.Flags().Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
-	serveCmd.Flags().Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
+	registerServeFlags(serveCmd)
 
 	// The service resolves the same settings from the same layers the Action
 	// does, so it takes the same flags
 	config.RegisterFlags(serveCmd.Flags())
 
 	rootCmd.AddCommand(serveCmd)
+}
+
+// registerServeFlags declares every flag the service itself takes.
+//
+// A function rather than a list inside init, because the specs resolve
+// configuration from a command they build themselves and need the same flags
+// on it. While that was a second copy of the list it drifted on the first flag
+// added to one side only, and the whole service suite failed with "flag
+// accessed but not defined" - which names the flag and nothing about why there
+// were two lists.
+func registerServeFlags(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	flags.String(flagListen, defaultListenAddress, descListen)
+	flags.String(flagAdminListen, defaultAdminAddress, descAdminListen)
+	flags.String(flagWebhookPath, defaultWebhookPath, descWebhookPath)
+	flags.Duration(flagPollInterval, defaultPollInterval, descPollInterval)
+	flags.Duration(
+		flagPendingCIQuietPeriod,
+		defaultPendingCIQuietPeriod,
+		descPendingCIQuietPeriod,
+	)
+	flags.Duration(
+		flagPathIndexInterval,
+		defaultPathIndexInterval,
+		descPathIndexInterval,
+	)
+	flags.String(flagHeartbeatURL, "", descHeartbeatURL)
+	flags.String(flagLogFormat, defaultLogFormat, descLogFormat)
+	flags.String(flagLogLevel, defaultLogLevel, descLogLevel)
+	flags.String(flagDatabase, defaultState, descDatabase)
+	flags.String(flagState, "", descState)
+	_ = flags.MarkDeprecated(flagState, "use --database-url")
+	flags.String(flagPanelOrigin, "", descPanelOrigin)
+	flags.String(flagPanelBase, defaultPanelBase, descPanelBase)
+	flags.String(flagPanelState, "", descPanelState)
+	_ = flags.MarkDeprecated(flagPanelState, "use --database-url")
+	flags.Int64(flagPanelSuperRootID, 0, descPanelSuperRootID)
+	flags.Duration(flagPanelTTL, defaultPanelTTL, descPanelTTL)
 }
 
 // serveConfig is everything the service needs to start.
@@ -566,6 +585,12 @@ func applyServeFlags(cmd *cobra.Command, cfg *serveConfig) error {
 	if !heartbeatURLUsable(cfg.heartbeatURL) {
 		return ErrInvalidHeartbeatURL
 	}
+	// The beat rides the maintenance timer, and without a poll interval there
+	// is no timer to ride. Refused rather than accepted, because a heartbeat
+	// that cannot fire is reported by the monitor as the service being down
+	if cfg.heartbeatURL != "" && cfg.pollInterval <= 0 {
+		return ErrHeartbeatWithoutPolling
+	}
 
 	return applyLogFlags(cmd, cfg)
 }
@@ -581,7 +606,10 @@ func heartbeatURLUsable(raw string) bool {
 		return false
 	}
 
-	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+	// Hostname rather than Host, because "https://:443/beat" has a non-empty
+	// Host holding only a port. The client would dial an empty host, so the
+	// monitor would never hear from it
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != ""
 }
 
 // applyLogFlags resolves how the service writes its log lines.

@@ -43,12 +43,18 @@ type Metrics struct {
 	// DeliveriesInFlight is how many deliveries are executing right now
 	DeliveriesInFlight prometheus.Gauge
 
-	// Sweeps counts reaction sweeps by outcome
-	Sweeps *prometheus.CounterVec
+	// MaintenanceCycles counts turns of the maintenance lane by outcome.
+	//
+	// The lane rather than the sweep, because the sweep is only how the lane
+	// spends a turn where there is no panel. These replaced sweeps_total and
+	// sweep_duration_seconds, which were written in exactly that one branch
+	// and so never moved on a deployment that has a panel
+	MaintenanceCycles *prometheus.CounterVec
 
-	// SweepDuration measures how long one sweep took. A sweep that outgrows
-	// the interval delays the next one, and this is where that shows
-	SweepDuration prometheus.Histogram
+	// MaintenanceCycleDuration measures how long one turn of the lane took. A
+	// turn that outgrows the poll interval delays the next one, and this is
+	// where that shows before reactions start arriving late
+	MaintenanceCycleDuration prometheus.Histogram
 }
 
 // New builds the metrics and registers them.
@@ -84,17 +90,22 @@ func New(reg prometheus.Registerer) *Metrics {
 			Help:      "Deliveries executing right now.",
 		}),
 
-		Sweeps: factory.NewCounterVec(prometheus.CounterOpts{
+		MaintenanceCycles: factory.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
-			Name:      "sweeps_total",
-			Help:      "Reaction sweeps run, by result.",
+			Name:      "maintenance_cycles_total",
+			Help:      "Turns of the maintenance lane, by result.",
 		}, []string{"result"}),
 
-		SweepDuration: factory.NewHistogram(prometheus.HistogramOpts{
+		// Wider than the delivery histogram at both ends, because the two
+		// deployments spend a turn very differently: with a panel the lane
+		// claims at most one queued job and usually returns in milliseconds,
+		// and without one it sweeps every installation and can run for
+		// minutes. 10ms to about three minutes covers both
+		MaintenanceCycleDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
-			Name:      "sweep_duration_seconds",
-			Help:      "Time spent on one reaction sweep.",
-			Buckets:   prometheus.ExponentialBuckets(0.5, 2, 10),
+			Name:      "maintenance_cycle_duration_seconds",
+			Help:      "Time spent on one turn of the maintenance lane.",
+			Buckets:   prometheus.ExponentialBuckets(0.01, 3, 10),
 		}),
 	}
 }
