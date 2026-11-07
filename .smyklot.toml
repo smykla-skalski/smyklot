@@ -8,6 +8,17 @@ scope = "repository"
 document = '''{
   "merges": [
     {
+      "path": "CONTRIBUTING.md",
+      "strategy": "markdown",
+      "sections": [
+        {
+          "action": "patch",
+          "heading": "### Making Changes",
+          "patches": [{"find": "make check  # or task check", "replace": "mise run ci"}]
+        }
+      ]
+    },
+    {
       "path": "renovate.json",
       "strategy": "deep-merge",
       "overrides": {
