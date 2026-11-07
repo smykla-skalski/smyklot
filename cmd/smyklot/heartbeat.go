@@ -11,9 +11,9 @@ import (
 
 // heartbeatTimeout bounds one ping.
 //
-// Short on purpose. The ping runs between maintenance ticks, so a provider
-// that has stopped answering must not be able to hold the lane that answers
-// reactions.
+// Short on purpose. The ping runs on the same goroutine as the maintenance
+// turns, so a provider that has stopped answering must not be able to hold the
+// lane that answers reactions.
 const heartbeatTimeout = 10 * time.Second
 
 // defaultHeartbeatInterval is how often the lane beats.

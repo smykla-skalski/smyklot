@@ -49,7 +49,7 @@ const (
 	descPollInterval         = "How often to sweep reactions and pending-CI PRs (0 disables)"
 	descPendingCIQuietPeriod = "How long CI must remain unchanged and passing before merge"
 	descPathIndexInterval    = "How often a repository's file list is checked for changes"
-	descHeartbeatURL         = "URL to ping after each maintenance tick, for an external heartbeat monitor (empty disables it)"
+	descHeartbeatURL         = "URL to ping at startup then once a minute, for an external heartbeat monitor (empty disables it)"
 	descLogFormat            = "Log format: json or text"
 	descLogLevel             = "Log level: debug, info, warn or error"
 	descDatabase             = "Database to store service state in: a postgres:// URL or a file path"
@@ -252,8 +252,13 @@ type serveConfig struct {
 	// port because the webhook port is reachable from the internet
 	adminAddress string
 
-	// heartbeatURL is pinged after every maintenance tick, so an external
-	// monitor can alert when the loop stops turning. Empty disables it.
+	// heartbeatURL is pinged when the maintenance loop starts and once a
+	// minute after that, so an external monitor can alert when the loop stops
+	// turning. Empty disables it.
+	//
+	// A long maintenance turn delays the beat behind it, so the gap this can
+	// leave is the slowest turn plus the cadence, which is what a grace period
+	// has to be sized against. DEPLOYMENT says so.
 	//
 	// The token is in the URL, so this is a credential: set it as a secret
 	// rather than in a committed configuration file
