@@ -233,7 +233,7 @@ var _ = Describe("Precedence [Unit]", func() {
 	})
 
 	It("is documented in the same order everywhere it is documented", func() {
-		for _, name := range []string{"README.md", "CLAUDE.md"} {
+		for _, name := range []string{"README.md", "AGENTS.md"} {
 			content, err := os.ReadFile(filepath.Join("..", "..", name))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring(config.PrecedenceDoc()),

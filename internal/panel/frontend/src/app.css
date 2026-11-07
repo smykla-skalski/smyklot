@@ -1662,7 +1662,7 @@ code {
 /* A pill reporting on something that has a health, which today is the database.
    Keyed on the attribute rather than on an extra class, because the attribute is
    what `StatusPill` is given and the three words are the ones `databaseState`
-   decides - see the note beside `Store.Status` in CLAUDE.md. Beside the pill rather
+   decides - see the note beside `Store.Status` in AGENTS.md. Beside the pill rather
    than inside the component: these are palette values, and the palette lives here. */
 .status-pill[data-state='healthy'] {
   background: var(--success-tint);

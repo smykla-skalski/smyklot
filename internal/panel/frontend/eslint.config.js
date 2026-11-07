@@ -91,7 +91,7 @@ export default tseslint.config(
               name: 'runed/kit',
               message:
                 "runed/kit is built against SvelteKit 2's `goto` options. The `runed` " +
-                'peer override in package.json assumes nothing imports it - see CLAUDE.md.',
+                'peer override in package.json assumes nothing imports it - see AGENTS.md.',
             },
           ],
         },
