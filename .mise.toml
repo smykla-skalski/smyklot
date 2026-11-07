@@ -268,8 +268,8 @@ description = "Lint Markdown files"
 run = "markdownlint-cli2 '**/*.md'"
 
 [tasks."lint:mod"]
-description = "Verify Go module dependencies"
-run = "go mod verify"
+description = "Verify Go module dependencies and that go.mod and go.sum are tidy"
+run = ["go mod verify", "go mod tidy -diff"]
 
 [tasks."lint:helm"]
 description = "Lint the Helm chart and prove each of its guards still refuses"
