@@ -476,13 +476,13 @@ fly logs --app smyklot
 
 `fly logs` is a live tail and keeps nothing. Fly's log search, in the same Grafana, retains 7 days and reads the JSON fields, which is where to go for a delivery that failed yesterday.
 
-None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged after each maintenance tick, so an external monitor can alert when the pings stop. The maintenance lane is what answers reaction commands, and it turns at least once per `SMYKLOT_POLL_INTERVAL`, so set the monitor's grace period to a few multiples of that. The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
+None of the above notices that the service has gone quiet, because every one of them is read rather than pushed. `SMYKLOT_HEARTBEAT_URL` is pinged once a minute by the loop that answers reaction commands, so an external monitor can alert when the pings stop. Set the monitor's grace period to a few multiples of a minute, not to `SMYKLOT_POLL_INTERVAL`: the two are independent, and a long maintenance turn holds the loop and so delays a beat. Five minutes is a reasonable starting point. The ping carries a token in its URL, so it is a secret rather than a `fly.toml` value:
 
 ```bash
 fly secrets set SMYKLOT_HEARTBEAT_URL="https://uptime.betterstack.com/api/v1/heartbeat/<token>" --app smyklot
 ```
 
-The heartbeat reports liveness, not correctness. A tick that found no work, and one taken while background work is paused, both ping: a paused service is idle on purpose, and silencing the heartbeat for it would page somebody about a working deployment. What a sweep actually did is in the metrics and the log beside it.
+The heartbeat reports liveness, not correctness. It keeps beating with no work to do, with background work paused, with reaction polling switched off and with a job that fails every time, because none of those is an outage and a monitor cannot tell any of them from silence. It stops when the loop stops, which is the one thing it is for. What the lane actually did is in the metrics and the log instead: `smyklot_maintenance_cycles_total{result}` counts the turns.
 
 ### What This Costs
 

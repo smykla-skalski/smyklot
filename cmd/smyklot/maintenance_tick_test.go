@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -129,6 +131,27 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 		return rec.Body.String()
 	}
 
+	// turns is how many times the lane has been round
+	turns := func(srv *server) int {
+		GinkgoHelper()
+
+		const marker = "smyklot_maintenance_cycle_duration_seconds_count "
+
+		for line := range strings.SplitSeq(scrape(srv), "\n") {
+			count, found := strings.CutPrefix(line, marker)
+			if !found {
+				continue
+			}
+
+			parsed, err := strconv.Atoi(strings.TrimSpace(count))
+			Expect(err).NotTo(HaveOccurred())
+
+			return parsed
+		}
+
+		return 0
+	}
+
 	Describe("the beat", func() {
 		It("beats while the lane has nothing to do", func() {
 			runLoop(build(monitor.URL))
@@ -157,6 +180,20 @@ var _ = Describe("Maintenance tick [Unit]", func() {
 			runLoop(srv)
 
 			Eventually(hits.Load).Should(BeNumerically(">=", 2))
+		})
+
+		It("leaves the pending turn alone while it beats", func() {
+			// The beat used to stop the timer, so the next pass armed a whole
+			// fresh interval. One beat a minute against a five-minute poll
+			// meant the turn never arrived and no reaction was ever swept,
+			// while the monitor went on reporting the service healthy
+			srv := build(monitor.URL)
+			srv.runtimePollInterval = 40 * srv.heartbeatInterval
+
+			runLoop(srv)
+
+			Eventually(hits.Load).Should(BeNumerically(">=", 5))
+			Eventually(func() int { return turns(srv) }).Should(BeNumerically(">=", 1))
 		})
 
 		It("sends nothing when no heartbeat is configured", func() {

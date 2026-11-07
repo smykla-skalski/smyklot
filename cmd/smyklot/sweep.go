@@ -50,53 +50,106 @@ func (s *server) pollLoop(ctx context.Context) {
 	beats, stopBeating := s.heartbeatBeats()
 	defer stopBeating()
 
+	turn := &maintenanceTimer{}
+	defer turn.disarm()
+
 	s.logPollInterval(interval)
 	for {
-		delay, err := s.nextMaintenanceDelay(ctx, interval)
-		if err != nil {
-			s.logger.Error("read maintenance queue schedule", "error", err)
-		}
-		delay = maintenanceDelayWithRetry(delay, maintenanceRetryAt, time.Now().UTC())
-		if delay == nil {
-			select {
-			case <-ctx.Done():
-				return
-			case <-s.pollIntervalChanged:
-				interval = s.pollInterval()
-				s.logPollInterval(interval)
-			case <-s.workQueueChanged:
-				s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
-			case <-beats:
-				s.pingHeartbeat(ctx)
-			}
-
-			continue
+		if !turn.armed() {
+			s.armMaintenanceTurn(ctx, turn, interval, maintenanceRetryAt)
 		}
 
-		timer := time.NewTimer(*delay)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
-
 			return
 		case <-s.pollIntervalChanged:
-			timer.Stop()
+			// The pending turn was scheduled against the old interval, so this
+			// is one of the two wakeups that should discard it
+			turn.disarm()
 			interval = s.pollInterval()
 			s.logPollInterval(interval)
 		case <-s.workQueueChanged:
-			timer.Stop()
 			// An explicit queue action must be able to wake this lane even when
 			// an earlier automatic dispatch is waiting for its retry boundary.
+			turn.disarm()
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		case <-beats:
-			timer.Stop()
+			// Deliberately leaves the turn armed
 			s.pingHeartbeat(ctx)
-		case <-timer.C:
+		case <-turn.C():
+			turn.disarm()
 			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		}
 	}
+}
+
+// maintenanceTimer is pollLoop's single timer for the turn it owes.
+//
+// One timer, armed once per turn rather than once per wakeup. A wakeup that is
+// not the timer's own has to leave a pending turn where it is: re-armed from
+// scratch on every beat, a five-minute interval was pushed back a minute at a
+// time and the turn never came, so a deployment that went on reporting itself
+// healthy swept no reactions at all.
+type maintenanceTimer struct {
+	timer *time.Timer
+	due   <-chan time.Time
+}
+
+// armed reports whether a turn is already waiting.
+func (t *maintenanceTimer) armed() bool {
+	return t.due != nil
+}
+
+// arm schedules a turn one delay from now.
+func (t *maintenanceTimer) arm(delay time.Duration) {
+	if t.timer == nil {
+		t.timer = time.NewTimer(delay)
+	} else {
+		t.timer.Reset(delay)
+	}
+
+	t.due = t.timer.C
+}
+
+// disarm throws a pending turn away, and is also how a turn that has arrived
+// is cleared.
+func (t *maintenanceTimer) disarm() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+
+	t.due = nil
+}
+
+// C is the channel the turn arrives on.
+//
+// It is nil while nothing is owed, and a receive on a nil channel blocks for
+// ever - which is how one select can wait either for a turn or only for the
+// things that are not one.
+func (t *maintenanceTimer) C() <-chan time.Time {
+	return t.due
+}
+
+// armMaintenanceTurn schedules the next turn of the lane, if one is owed.
+func (s *server) armMaintenanceTurn(
+	ctx context.Context,
+	turn *maintenanceTimer,
+	interval time.Duration,
+	retryAt time.Time,
+) {
+	delay, err := s.nextMaintenanceDelay(ctx, interval)
+	if err != nil {
+		s.logger.Error("read maintenance queue schedule", "error", err)
+	}
+
+	delay = maintenanceDelayWithRetry(delay, retryAt, time.Now().UTC())
+	if delay == nil {
+		return
+	}
+
+	turn.arm(*delay)
 }
 
 // tryDispatchMaintenanceQueue turns the maintenance lane once and records how
