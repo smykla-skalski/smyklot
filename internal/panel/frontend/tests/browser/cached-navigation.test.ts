@@ -34,8 +34,28 @@ import { settle, startPanel, visit, type Panel } from './harness';
 const FIRST = 'Repositories';
 const SECOND = 'Workspace settings';
 
+/**
+ * Waits out the resync a freshly loaded page owes.
+ *
+ * Each page load opens its own socket, and its `ready` frame invalidates every
+ * cached query. The page settles on its requests alone, and the socket is not
+ * one, so a `ready` that came late landed inside the walk and the revisit
+ * refetched what it had just invalidated.
+ */
+async function streamReadied(page: Page): Promise<void> {
+  await settle(
+    page,
+    async () =>
+      void (await page.waitForFunction(
+        () => (window as unknown as { __panelStreamReadied: number }).__panelStreamReadied > 0,
+      )),
+    { ready: 'main' },
+  );
+}
+
 async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
   await visit(page, `${panel.origin}/workspace/${panel.account}/repositories`);
+  await streamReadied(page);
   // Away, so the first view's queries go inactive and its data is only in cache.
   await settle(page, () => page.getByRole('link', { name: SECOND, exact: true }).first().click(), {
     mount: 2_000,
@@ -72,6 +92,7 @@ async function queueCallsOnReturn(
   away: { link: string; ready: string },
 ): Promise<string[]> {
   await visit(page, queueURL, { ready: '.general-queue .object-row' });
+  await streamReadied(page);
   await settle(
     page,
     () => page.getByRole('link', { name: away.link, exact: true }).first().click(),
@@ -123,15 +144,27 @@ beforeAll(async () => {
     await page.addInitScript(() => {
       const original = window.WebSocket;
       let opened = 0;
+      let readied = 0;
       Object.defineProperty(window, '__panelSockets', { get: () => opened });
+      Object.defineProperty(window, '__panelStreamReadied', { get: () => readied });
       window.WebSocket = new Proxy(original, {
         construct(target, args: ConstructorParameters<typeof WebSocket>) {
+          const socket = new target(...args);
           /* The panel's, not vite's. The dev server holds a socket of its own
              for hot reloading and it opens first, so counting every socket on
              the page counted that one too and read two where the panel had
              opened one. */
-          if (String(args[0]).includes('/api/v1/events')) opened += 1;
-          return new target(...args);
+          if (!String(args[0]).includes('/api/v1/events')) return socket;
+          opened += 1;
+          socket.addEventListener('message', (event: MessageEvent) => {
+            try {
+              if ((JSON.parse(String(event.data)) as { type?: string }).type === 'ready')
+                readied += 1;
+            } catch {
+              // Not a frame the panel would read either.
+            }
+          });
+          return socket;
         },
       });
     });
