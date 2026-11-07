@@ -136,7 +136,7 @@ func (s *pushScenario) expectReauthorizeActionOn(head string, within time.Durati
 
 func (s *pushScenario) pushOneMoreCommitAs(sender string) time.Time {
 	GinkgoHelper()
-	s.stub.prHead = scenarioPushSHA
+	s.stub.setPullRequestHead(scenarioPushSHA)
 	s.reviews.dropApprovals()
 	s.deliver(webhook.EventPullRequest, scenarioPullRequestSynchronizeBy(scenarioPushSHA, sender))
 
@@ -145,7 +145,7 @@ func (s *pushScenario) pushOneMoreCommitAs(sender string) time.Time {
 
 func (s *pushScenario) changeBaseBranch(branch string) time.Time {
 	GinkgoHelper()
-	s.stub.prBase = branch
+	s.stub.setPullRequestBase(branch)
 	s.deliver(webhook.EventPullRequest, scenarioPullRequestBaseEdited(scenarioFirstSHA, branch))
 
 	return time.Now()
@@ -153,13 +153,13 @@ func (s *pushScenario) changeBaseBranch(branch string) time.Time {
 
 func (s *pushScenario) removeFromCodeowners(login string) {
 	GinkgoHelper()
-	Expect(s.stub.codeowners).To(ContainSubstring("@" + login))
-	s.stub.codeowners = "* @someone-else\n"
+	Expect(s.stub.currentCodeowners()).To(ContainSubstring("@" + login))
+	s.stub.setCodeowners("* @someone-else\n")
 }
 
 func (s *pushScenario) putBackInCodeowners(login string) {
 	GinkgoHelper()
-	s.stub.codeowners = "* @" + login + "\n"
+	s.stub.setCodeowners("* @" + login + "\n")
 }
 
 func (s *pushScenario) waitUntilCIIsGreenOn(head string) {

@@ -316,7 +316,7 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, `{"token": "installation-token", "expires_at": %q}`, expiry)
 
 	case strings.HasSuffix(r.URL.Path, "/contents/.github/CODEOWNERS"):
-		s.writeFile(w, s.codeowners)
+		s.writeFile(w, s.currentCodeowners())
 
 	// The head of the default branch, which the service reads as the validator
 	// for its configuration cache. A fixed SHA means a spec that reads twice
@@ -509,15 +509,49 @@ func (s *githubStub) currentRepoConfig() string {
 	return s.repoConfig
 }
 
-// writeFile answers the contents API, treating empty content as a missing file
+// setPullRequestHead moves the pull request's head while the service is
+// running, the way a push does.
+func (s *githubStub) setPullRequestHead(sha string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.prHead = sha
+}
+
+func (s *githubStub) setPullRequestBase(branch string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.prBase = branch
+}
+
+func (s *githubStub) setCodeowners(content string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.codeowners = content
+}
+
+func (s *githubStub) currentCodeowners() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.codeowners
+}
+
 // servePullRequest answers one pull request, and records an edit of it.
 func (s *githubStub) servePullRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPatch {
 		s.record(&s.editedPRs, r)
 	}
 
-	if s.migrationPRState != "" {
-		_, _ = io.WriteString(w, s.migrationPRState)
+	s.mu.Lock()
+	migrationState := s.migrationPRState
+	author, base, head, labels := s.prAuthor, s.prBase, s.prHead, s.prLabels
+	s.mu.Unlock()
+
+	if migrationState != "" {
+		_, _ = io.WriteString(w, migrationState)
 
 		return
 	}
@@ -532,7 +566,7 @@ func (s *githubStub) servePullRequest(w http.ResponseWriter, r *http.Request) {
 		"base": {"ref": %q},
 		"head": {"sha": %q},
 		"labels": %s
-	}`, s.prAuthor, s.prBase, s.prHead, s.prLabels)
+	}`, author, base, head, labels)
 }
 
 // servePulls answers both things the pull request endpoint is asked: opening
@@ -943,6 +977,7 @@ func orEmptyList(body string) string {
 	return body
 }
 
+// writeFile answers the contents API, treating empty content as a missing file
 func (s *githubStub) writeFile(w http.ResponseWriter, content string) {
 	if content == "" {
 		w.WriteHeader(http.StatusNotFound)
