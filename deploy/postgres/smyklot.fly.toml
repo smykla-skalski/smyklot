@@ -85,6 +85,14 @@ primary_region = "fra"
   timeout = "5s"
   path = "/healthz"
 
+# Fly scrapes this every 15 seconds over the private network, which is the only
+# metric history that survives a restart: the process's own counters start at
+# zero, and the panel's samples are hourly folds rather than series. A scrape is
+# not an exposure, so 9090 stays unpublished
+[metrics]
+  port = 9090
+  path = "/metrics"
+
 # No [[mounts]]. State lives in the smyklot-db app, which has the volume and
 # the snapshots. Removing the mount is what makes readOnlyRootFilesystem, a
 # scratch machine and a rebuild from the image all safe here.

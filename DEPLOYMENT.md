@@ -466,11 +466,15 @@ curl localhost:9090/failures
 curl localhost:9090/metrics
 ```
 
+The `[metrics]` block has Fly scrape 9090 over that same private network every 15 seconds, so the history is also in Fly's managed Prometheus and drawn at [fly-metrics.net](https://fly-metrics.net/) without a proxy. Proxy when you want this instant; use Grafana when you want the last fortnight. Fly retains about 15 days, and the built-in `fly_instance_*` and `fly_app_*` series arrive there for both apps with no configuration.
+
 Logs, which carry a `delivery_id` on every line about a delivery:
 
 ```bash
 fly logs --app smyklot
 ```
+
+`fly logs` is a live tail and keeps nothing. Fly's log search, in the same Grafana, retains 7 days and reads the JSON fields, which is where to go for a delivery that failed yesterday.
 
 ### What This Costs
 
