@@ -1,0 +1,46 @@
+#:schema https://smyklot.com/schema/repository-panel-v1.json
+
+[panel]
+version = 1
+scope = "repository"
+
+[panel.sync.files]
+document = '''{
+  "merges": [
+    {
+      "path": "renovate.json",
+      "strategy": "deep-merge",
+      "overrides": {
+        "postUpdateOptions": ["gomodTidy"],
+        "rebaseWhen": "conflicted",
+        "packageRules": [
+          {
+            "description": "Exclude Bits UI 2.19.5 because its focus scope truncates edits in the shadow-root editor",
+            "matchPackageNames": ["bits-ui"],
+            "allowedVersions": "!/^2\\.19\\.5$/"
+          },
+          {
+            "description": "Keep Storybook packages and their addon peer dependencies compatible",
+            "matchPackageNames": ["storybook", "@storybook/*"],
+            "groupName": "Storybook"
+          },
+          {
+            "description": "Docker digests of a pinned tag are rebuilds that arrive more often than every seven days, so a release age never passes",
+            "matchDatasources": ["docker"],
+            "matchUpdateTypes": ["digest"],
+            "minimumReleaseAge": null
+          },
+          {
+            "description": "semantic-release rewrites the image tag in action.yml and would leave a pinned digest pointing at the previous release",
+            "matchFileNames": ["action.yml"],
+            "enabled": false
+          }
+        ]
+      },
+      "arrays": [{"path": "$.packageRules", "strategy": "append"}]
+    }
+  ],
+  "formats": [
+    {"path": "renovate.json", "formatting": {"json": {"objects": "auto", "arrays": "auto"}}}
+  ]
+}'''
