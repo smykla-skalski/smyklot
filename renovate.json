@@ -38,6 +38,17 @@
       "automerge": true
     },
     {
+      "description": "Docker digests of a pinned tag are rebuilds that arrive more often than every seven days, so a release age never passes",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "semantic-release rewrites the image tag in action.yml and would leave a pinned digest pointing at the previous release",
+      "matchFileNames": ["action.yml"],
+      "enabled": false
+    },
+    {
       "addLabels": ["area/ci"],
       "commitMessageTopic": "{{depName}} action",
       "description": "GitHub Actions dependencies",
