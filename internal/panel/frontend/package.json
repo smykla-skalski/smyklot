@@ -67,6 +67,7 @@
     "runed": "^0.38.0"
   },
   "overrides": {
+    "minimatch": "^11.0.1",
     "runed": {
       "@sveltejs/kit": "$@sveltejs/kit"
     },
