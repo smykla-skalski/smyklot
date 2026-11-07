@@ -61,8 +61,30 @@
       "enabled": false,
       "matchManagers": ["github-actions"],
       "matchPackageNames": ["smykla-skalski/smyklot"]
+    },
+    {
+      "allowedVersions": "!/^2\\.19\\.5$/",
+      "description": "Exclude Bits UI 2.19.5 because its focus scope truncates edits in the shadow-root editor",
+      "matchPackageNames": ["bits-ui"]
+    },
+    {
+      "description": "Keep Storybook packages and their addon peer dependencies compatible",
+      "groupName": "Storybook",
+      "matchPackageNames": ["storybook", "@storybook/*"]
+    },
+    {
+      "description": "Docker digests of a pinned tag are rebuilds that arrive more often than every seven days, so a release age never passes",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "semantic-release rewrites the image tag in action.yml and would leave a pinned digest pointing at the previous release",
+      "enabled": false,
+      "matchFileNames": ["action.yml"]
     }
   ],
   "vulnerabilityAlerts": {"automerge": false},
+  "postUpdateOptions": ["gomodTidy"],
   "rebaseWhen": "conflicted"
 }
