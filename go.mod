@@ -8,7 +8,7 @@ require (
 	github.com/google/go-github/v93 v93.0.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/jferrl/go-githubauth v1.11.0
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/prometheus/client_golang v1.25.0
