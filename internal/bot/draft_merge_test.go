@@ -325,7 +325,7 @@ func TestActionPendingCIFastPathRevalidatesBeforeMerge(t *testing.T) {
 	)
 	result, err := executeImmediateMerge(
 		t.Context(), client, runtime, botConfig, 7, github.MergeMethodMerge,
-		&github.PRInfo{Author: "author", ApprovedBy: []string{"operator"}},
+		&github.PRInfo{Author: "author", ApprovedBy: []string{"smyklot[bot]"}},
 		"head", authorize,
 	)
 	if err != nil {
@@ -379,7 +379,7 @@ func TestActionPendingCIFastPathRevalidatesBeforeFallback(t *testing.T) {
 	)
 	result, err := executeImmediateMerge(
 		t.Context(), client, runtime, draftMergeConfig(), 7, github.MergeMethodMerge,
-		&github.PRInfo{Author: "author", ApprovedBy: []string{"operator"}},
+		&github.PRInfo{Author: "author", ApprovedBy: []string{"smyklot[bot]"}},
 		"head", authorize,
 	)
 	if err != nil {
@@ -564,7 +564,7 @@ func reactionDraftRaceServer(
 			})
 		case request.URL.Path == "/repos/acme/web/pulls/7/reviews":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"state": "APPROVED", "user": map[string]any{"login": "operator"},
+				"state": "APPROVED", "user": map[string]any{"login": "smyklot[bot]"},
 			}})
 		case request.URL.Path == "/repos/acme/web/issues/7/events":
 			state.historyReads++
@@ -2156,7 +2156,7 @@ func draftMergeServer(
 			})
 		case request.URL.Path == "/repos/acme/web/pulls/7/reviews":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"state": "APPROVED", "user": map[string]any{"login": "operator"},
+				"state": "APPROVED", "user": map[string]any{"login": "smyklot[bot]"},
 			}})
 		case request.URL.Path == "/graphql":
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
@@ -2213,7 +2213,9 @@ func draftBlockedServer(t *testing.T) (*httptest.Server, *[]string) {
 			})
 		case request.URL.Path == "/repos/acme/web/pulls/7/reviews" &&
 			request.Method == http.MethodGet:
-			_ = json.NewEncoder(w).Encode([]map[string]any{})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"state": "APPROVED", "user": map[string]any{"login": "operator"},
+			}})
 		case request.URL.Path == "/repos/acme/web/pulls/7/reviews" &&
 			request.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)

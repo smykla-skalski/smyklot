@@ -322,6 +322,16 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(Equal(1))
 		})
 
+		It("should approve when the commenter has already approved", func() {
+			stub.reviews = `[{"id": 7, "state": "APPROVED", "user": {"login": "someone"}}]`
+
+			post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, approveReviews)
+			}, eventuallyWindow).Should(Equal(1))
+		})
+
 		It("should mint a token for the installation the delivery names", func() {
 			post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
 

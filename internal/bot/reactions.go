@@ -416,7 +416,7 @@ func handleReactionMerge(
 		)
 	}
 	if err := approveReactionMergeIfNeeded(
-		ctx, client, rc, prNum, commentID, author, info,
+		ctx, client, rc, prNum, commentID, info,
 	); err != nil {
 		return err
 	}
@@ -483,12 +483,9 @@ func approveReactionMergeIfNeeded(
 	client *github.Client,
 	rc *RuntimeConfig,
 	prNum, commentID int,
-	author string,
 	info *github.PRInfo,
 ) error {
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
-	if botAlreadyApproved || userAlreadyApproved {
+	if isBotAlreadyApproved(info, rc.BotUsername) {
 		return nil
 	}
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
