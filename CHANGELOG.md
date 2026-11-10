@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.59.1](https://github.com/smykla-skalski/smyklot/compare/v1.59.0...v1.59.1) (2026-11-10)
+
+### Bug Fixes
+
+* **bot:** approve even when commenter approved ([#541](https://github.com/smykla-skalski/smyklot/issues/541)) ([7f9cf53](https://github.com/smykla-skalski/smyklot/commit/7f9cf537ac76df84477764efed490e084ba3eb13))
+* **deps:** update dependency bits-ui to v2.20.3 ([#533](https://github.com/smykla-skalski/smyklot/issues/533)) ([1c169f7](https://github.com/smykla-skalski/smyklot/commit/1c169f798db87429c002a70fa0afec3e781702c1))
+* **deps:** update ginkgo to v2.34.0 ([#539](https://github.com/smykla-skalski/smyklot/issues/539)) ([8c097c2](https://github.com/smykla-skalski/smyklot/commit/8c097c2ad26e711e234efed464e233b8899d1082))
+* **deps:** update module github.com/jferrl/go-githubauth to v1.12.0 ([#540](https://github.com/smykla-skalski/smyklot/issues/540)) ([c0ab10f](https://github.com/smykla-skalski/smyklot/commit/c0ab10f4aeeb48e33de90299f1e38a18ebc428b8))
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.15 ([#537](https://github.com/smykla-skalski/smyklot/issues/537)) ([84af64f](https://github.com/smykla-skalski/smyklot/commit/84af64f73d6067b5e3316977d7525837a71e803e))
+* **deps:** update module go.yaml.in/yaml/v3 to v3.0.6 ([#529](https://github.com/smykla-skalski/smyklot/issues/529)) ([dc12fe8](https://github.com/smykla-skalski/smyklot/commit/dc12fe871869aea18ce6fc8ba64715d8e1d11a50))
+* **deps:** update module golang.org/x/sync to v0.25.0 ([#535](https://github.com/smykla-skalski/smyklot/issues/535)) ([6f9f633](https://github.com/smykla-skalski/smyklot/commit/6f9f63307d7f567368edf2ffe43b294bc879f249))
+* **deps:** update module modernc.org/sqlite to v1.61.1 ([#528](https://github.com/smykla-skalski/smyklot/issues/528)) ([7a401e7](https://github.com/smykla-skalski/smyklot/commit/7a401e7af50255e69702cfb8500b428f80403067))
+
 ## [1.59.0](https://github.com/smykla-skalski/smyklot/compare/v1.58.1...v1.59.0) (2026-11-07)
 
 ### Features
