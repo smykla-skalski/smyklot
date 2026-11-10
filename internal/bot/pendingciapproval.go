@@ -8,7 +8,10 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-const selfApprovalNotAllowed = "(self-approval not allowed)"
+const (
+	selfApprovalNotAllowed     = "(self-approval not allowed)"
+	botAuthoredApprovalRefused = "GitHub does not let Smyklot approve a pull request it opened"
+)
 
 type pendingCIApprover interface {
 	ApprovePR(context.Context, string, string, int) error
@@ -33,14 +36,7 @@ func PendingCIApprovalRequired(
 	runtime *RuntimeConfig,
 	info *github.PRInfo,
 ) bool {
-	botApproved := isBotAlreadyApproved(info, runtime.BotUsername)
-	for _, login := range info.ApprovedBy {
-		if login == runtime.CommentAuthor {
-			return false
-		}
-	}
-
-	return !botApproved
+	return botApprovalNeeded(info, runtime.BotUsername)
 }
 
 func approvePendingCI(

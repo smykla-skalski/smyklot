@@ -328,6 +328,10 @@ func handleReactionApprove(
 		)
 		return nil
 	}
+	if isBotAuthored(info, rc.BotUsername) {
+		fb := feedback.NewApprovalFailed(botAuthoredApprovalRefused)
+		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionError)
+	}
 
 	// Approve the PR
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
@@ -485,7 +489,7 @@ func approveReactionMergeIfNeeded(
 	prNum, commentID int,
 	info *github.PRInfo,
 ) error {
-	if isBotAlreadyApproved(info, rc.BotUsername) {
+	if !botApprovalNeeded(info, rc.BotUsername) {
 		return nil
 	}
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {

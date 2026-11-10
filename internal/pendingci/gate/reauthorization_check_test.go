@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -16,26 +17,31 @@ import (
 func TestReauthorizationPreviewDoesNotApprove(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name                         string
-		approved, self, failApproval bool
-		writes                       int32
+		name             string
+		author, approver string
+		failApproval     bool
+		allowed          bool
+		required         bool
+		writes           int32
 	}{
-		{name: "approval needed", writes: 1},
-		{name: "already approved", approved: true},
-		{name: "self approval forbidden", self: true},
-		{name: "approval write fails", failApproval: true, writes: 1},
+		{name: "approval needed", allowed: true, required: true, writes: 1},
+		{name: "bot already approved", approver: reauthorizationBot, allowed: true},
+		{name: "commenter approval is not the bot's", approver: "maintainer", allowed: true, required: true, writes: 1},
+		{name: "bot cannot approve its own pull request", author: reauthorizationBot, approver: "maintainer", allowed: true},
+		{name: "self approval forbidden", author: "maintainer"},
+		{name: "approval write fails", failApproval: true, allowed: true, required: true, writes: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			harness := newReauthorizationPreviewHarness(t, test.approved, test.self, test.failApproval)
+			harness := newReauthorizationPreviewHarness(t, test.author, test.approver, test.failApproval)
 			check, err := harness.backend.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
-			if err != nil || check.allowed != !test.self || check.approvalRequired != (!test.approved && !test.self) {
+			if err != nil || check.allowed != test.allowed || check.approvalRequired != test.required {
 				t.Fatalf("preview = %+v, %v", check, err)
 			}
 			if harness.approvals.Load() != 0 {
 				t.Fatal("preview wrote an approval")
 			}
 			allowed, err := harness.backend.preparePendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
-			if (err != nil) != test.failApproval || allowed != (!test.self && !test.failApproval) {
+			if (err != nil) != test.failApproval || allowed != (test.allowed && !test.failApproval) {
 				t.Fatalf("execution allowed = %v, error = %v", allowed, err)
 			}
 
@@ -48,7 +54,7 @@ func TestReauthorizationPreviewDoesNotApprove(t *testing.T) {
 
 func TestReauthorizationExecutionRechecksPreviewPermission(t *testing.T) {
 	t.Parallel()
-	harness := newReauthorizationPreviewHarness(t, false, false, false)
+	harness := newReauthorizationPreviewHarness(t, "", "", false)
 	check, err := harness.backend.checkPendingCIReauthorization(t.Context(), harness.candidate, harness.signal)
 	if err != nil || !check.allowed {
 		t.Fatalf("preview = %+v, %v", check, err)
@@ -68,7 +74,9 @@ type reauthorizationPreviewHarness struct {
 	denied    atomic.Bool
 }
 
-func newReauthorizationPreviewHarness(t *testing.T, approved, self, failApproval bool) *reauthorizationPreviewHarness {
+const reauthorizationBot = "smyklot[bot]"
+
+func newReauthorizationPreviewHarness(t *testing.T, author, approver string, failApproval bool) *reauthorizationPreviewHarness {
 	t.Helper()
 	h := &reauthorizationPreviewHarness{}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,13 +103,9 @@ func newReauthorizationPreviewHarness(t *testing.T, approved, self, failApproval
 			}
 			_, _ = fmt.Fprintf(w, `{"permission":%q}`, permission)
 		case "/repos/owner/repository/pulls/42":
-			author := "contributor"
-			if self {
-				author = "maintainer"
-			}
-			_, _ = fmt.Fprintf(w, `{"state":"open","head":{"sha":"new-head"},"base":{"ref":"main"},"user":{"login":%q}}`, author)
+			_, _ = fmt.Fprintf(w, `{"state":"open","head":{"sha":"new-head"},"base":{"ref":"main"},"user":{"login":%q}}`, cmp.Or(author, "contributor"))
 		case "/repos/owner/repository/pulls/42/reviews":
-			writeReauthorizationReviews(w, approved)
+			writeReauthorizationReviews(w, approver)
 		case "/graphql":
 			_, _ = w.Write([]byte(`{"data":{"repository":{"mergeQueue":null}}}`))
 		case "/repos/owner/repository/branches/main/protection/required_status_checks":
@@ -118,7 +122,7 @@ func newReauthorizationPreviewHarness(t *testing.T, approved, self, failApproval
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.backend = &Backend{config: func(context.Context, *github.Client, string, string, string, string) (*config.Config, error) {
+	h.backend = &Backend{botUsername: reauthorizationBot, config: func(context.Context, *github.Client, string, string, string, string) (*config.Config, error) {
 		return &config.Config{}, nil
 	}}
 	h.candidate = reauthorizationCandidate{slot: pendingci.CheckSlot{PullRequest: 42, Name: "Smyklot", AppID: 17}, request: pendingci.Request{CandidateBaseBranch: "main"}, client: client, owner: "owner", repository: "repository"}
@@ -126,10 +130,10 @@ func newReauthorizationPreviewHarness(t *testing.T, approved, self, failApproval
 	return h
 }
 
-func writeReauthorizationReviews(w http.ResponseWriter, approved bool) {
-	body := `[]`
-	if approved {
-		body = `[{"state":"APPROVED","user":{"login":"maintainer"}}]`
+func writeReauthorizationReviews(w http.ResponseWriter, approver string) {
+	if approver == "" {
+		_, _ = w.Write([]byte(`[]`))
+		return
 	}
-	_, _ = w.Write([]byte(body))
+	_, _ = fmt.Fprintf(w, `[{"state":"APPROVED","user":{"login":%q}}]`, approver)
 }
