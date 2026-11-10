@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.59.2](https://github.com/smykla-skalski/smyklot/compare/v1.59.1...v1.59.2) (2026-11-10)
+
+### Bug Fixes
+
+* **bot:** skip approval on pull requests it opened ([#542](https://github.com/smykla-skalski/smyklot/issues/542)) ([1a8da11](https://github.com/smykla-skalski/smyklot/commit/1a8da111e955d8156636140c39a88f98246ac16c))
+
 ## [1.59.1](https://github.com/smykla-skalski/smyklot/compare/v1.59.0...v1.59.1) (2026-11-10)
 
 ### Bug Fixes
