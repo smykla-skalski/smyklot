@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,9 @@ type githubStub struct {
 	// codeowners is the repository's CODEOWNERS, or empty for a repository
 	// without one
 	codeowners string
+
+	// reviews answers the pull request's review listing, or `[]` when empty
+	reviews string
 
 	// branchPRs answers a pull request listing filtered by head branch, which
 	// is how the configuration migration asks what became of its proposal.
@@ -332,7 +336,7 @@ func (s *githubStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case strings.HasSuffix(r.URL.Path, "/reviews"):
 		if r.Method == http.MethodGet {
-			_, _ = w.Write([]byte(`[]`))
+			_, _ = io.WriteString(w, cmp.Or(s.reviews, `[]`))
 
 			return
 		}

@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -283,7 +282,7 @@ func ExecuteCommentWithEnvironment(
 		// Just acknowledge with eyes reaction instead
 		if isNewComment && fb.Type == feedback.Warning &&
 			fb.Message != "" && strings.Contains(fb.Message, "Already Approved") {
-			// Add eyes reaction to acknowledge (user already approved)
+			// Add eyes reaction to acknowledge (bot already approved)
 			if err := addEyesReaction(ctx, client, rc, commentIDNum); err != nil {
 				return err
 			}
@@ -394,15 +393,6 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 	if isBotAlreadyApproved(info, rc.BotUsername) {
 		// Bot already approved - return feedback (filtered for new comments)
 		return feedback.NewAlreadyApproved(rc.BotUsername), nil
-	}
-
-	// Check if already approved by the comment author (informational feedback)
-	for _, approver := range info.ApprovedBy {
-		if approver == rc.CommentAuthor {
-			// Already approved - return feedback indicating no action needed
-			// This will be filtered out in the main loop for new comments
-			return feedback.NewAlreadyApproved(rc.CommentAuthor), nil
-		}
 	}
 
 	// Approve the PR
@@ -588,9 +578,7 @@ func approveMergeIfNeeded(
 	prNum int,
 	info *github.PRInfo,
 ) *feedback.Feedback {
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
-	if botAlreadyApproved || userAlreadyApproved {
+	if isBotAlreadyApproved(info, rc.BotUsername) {
 		return nil
 	}
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
