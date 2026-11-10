@@ -35,3 +35,15 @@ type RuntimeConfig struct {
 func isBotAlreadyApproved(info *github.PRInfo, botUsername string) bool {
 	return slices.Contains(info.ApprovedBy, botUsername)
 }
+
+// GitHub refuses an approval from a pull request's own author, so a pull
+// request the bot opened is one it can never approve.
+func isBotAuthored(info *github.PRInfo, botUsername string) bool {
+	return botUsername != "" && info.Author == botUsername
+}
+
+// botApprovalNeeded reports whether the bot still has to add its own approval.
+// A human approval, the commenter's included, does not stand in for it.
+func botApprovalNeeded(info *github.PRInfo, botUsername string) bool {
+	return !isBotAuthored(info, botUsername) && !isBotAlreadyApproved(info, botUsername)
+}

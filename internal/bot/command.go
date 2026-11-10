@@ -394,6 +394,9 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 		// Bot already approved - return feedback (filtered for new comments)
 		return feedback.NewAlreadyApproved(rc.BotUsername), nil
 	}
+	if isBotAuthored(info, rc.BotUsername) {
+		return feedback.NewApprovalFailed(botAuthoredApprovalRefused), nil
+	}
 
 	// Approve the PR
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
@@ -578,7 +581,7 @@ func approveMergeIfNeeded(
 	prNum int,
 	info *github.PRInfo,
 ) *feedback.Feedback {
-	if isBotAlreadyApproved(info, rc.BotUsername) {
+	if !botApprovalNeeded(info, rc.BotUsername) {
 		return nil
 	}
 	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {

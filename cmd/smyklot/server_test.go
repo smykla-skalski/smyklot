@@ -332,6 +332,17 @@ var _ = Describe("Webhook service [Unit]", func() {
 			}, eventuallyWindow).Should(Equal(1))
 		})
 
+		It("should explain rather than approve a pull request the bot opened", func() {
+			stub.prAuthor = bot.DefaultBotUsername
+
+			post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
+
+			Eventually(func() int {
+				return stub.countCalls(http.MethodPost, prCommentsPath)
+			}, eventuallyWindow).Should(Equal(1))
+			Expect(stub.countCalls(http.MethodPost, approveReviews)).To(BeZero())
+		})
+
 		It("should mint a token for the installation the delivery names", func() {
 			post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
 

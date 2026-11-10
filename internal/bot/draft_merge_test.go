@@ -740,7 +740,7 @@ func TestReactionMergePreparesDraftBeforeMerging(t *testing.T) {
 }
 
 func TestDraftMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
-	server, requests := draftBlockedServer(t)
+	server, requests := draftBlockedServer(t, "author")
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
 	if err != nil {
@@ -762,7 +762,7 @@ func TestDraftMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 }
 
 func TestDraftMergeRefusesSelfApprovalBeforePublishing(t *testing.T) {
-	server, requests := draftBlockedServer(t)
+	server, requests := draftBlockedServer(t, "author")
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
 	if err != nil {
@@ -790,7 +790,7 @@ func TestDraftMergeRefusesSelfApprovalBeforePublishing(t *testing.T) {
 }
 
 func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
-	server, requests := draftBlockedServer(t)
+	server, requests := draftBlockedServer(t, "author")
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
 	if err != nil {
@@ -805,6 +805,46 @@ func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertApprovalBeforeAutoMerge(t, *requests)
+}
+
+func TestMergeOfBotAuthoredPullRequestSkipsBotApproval(t *testing.T) {
+	merges := map[string]func(*github.Client) error{
+		"command": func(client *github.Client) error {
+			_, err := executeMerge(
+				t.Context(), client, draftRuntime(), draftMergeConfig(), 7, 99,
+				github.MergeMethodMerge, false, false, CommandEnvironment{},
+			)
+			return err
+		},
+		"reaction": func(client *github.Client) error {
+			return handleReactionMerge(
+				t.Context(), client, draftRuntime(), draftMergeConfig(), 7, 99, "operator",
+				time.Date(2026, 8, 25, 8, 2, 0, 0, time.UTC),
+			)
+		},
+	}
+	for name, merge := range merges {
+		t.Run(name, func(t *testing.T) {
+			server, requests := draftBlockedServer(t, draftRuntime().BotUsername)
+			defer server.Close()
+			client, err := github.NewClient("test-token", server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := merge(client); err != nil {
+				t.Fatal(err)
+			}
+			if slices.Contains(*requests, "POST /repos/acme/web/pulls/7/reviews") {
+				t.Fatalf("bot approved its own pull request: %v", *requests)
+			}
+			graphql := slices.DeleteFunc(slices.Clone(*requests), func(request string) bool {
+				return request != "POST /graphql"
+			})
+			if len(graphql) != 2 {
+				t.Fatalf("graphql calls = %d, want ready and auto-merge: %v", len(graphql), *requests)
+			}
+		})
+	}
 }
 
 func TestActionPendingCICommandTreatsMissingLabelAsDisarmed(t *testing.T) {
@@ -2191,7 +2231,7 @@ func draftMergeServer(
 	return server, &requests
 }
 
-func draftBlockedServer(t *testing.T) (*httptest.Server, *[]string) {
+func draftBlockedServer(t *testing.T, author string) (*httptest.Server, *[]string) {
 	t.Helper()
 	var mu sync.Mutex
 	requests := []string{}
@@ -2208,7 +2248,7 @@ func draftBlockedServer(t *testing.T) (*httptest.Server, *[]string) {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"number": 7, "node_id": "PR_node", "state": "open", "draft": draft,
 				"mergeable": false, "mergeable_state": "blocked",
-				"user": map[string]any{"login": "author"},
+				"user": map[string]any{"login": author},
 				"head": map[string]any{"sha": "head"},
 			})
 		case request.URL.Path == "/repos/acme/web/pulls/7/reviews" &&
