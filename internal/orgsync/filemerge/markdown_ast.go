@@ -15,7 +15,7 @@ import (
 )
 
 func parseMarkdownDocument(content []byte) ast.Node {
-	return parser.New(parser.WithExtensions(extension.GFMParser)).Parse(content)
+	return parser.New(parser.WithExtensions(extension.NewGFMParser())).Parse(content)
 }
 
 func markdownSemanticDigest(content []byte) (string, error) {
