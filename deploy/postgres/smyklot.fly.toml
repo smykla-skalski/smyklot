@@ -65,7 +65,7 @@ primary_region = "fra"
   # The sweep is what makes reaction commands work, and a stopped machine runs
   # no timers. This is why the service cannot scale to zero
   auto_stop_machines = false
-  auto_start_machines = false
+  auto_start_machines = true
   min_machines_running = 1
 
   [http_service.concurrency]
