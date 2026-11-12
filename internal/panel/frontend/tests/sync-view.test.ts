@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
@@ -111,6 +111,11 @@ describe('SyncView [Component]', () => {
     state: {
       clock?: () => number;
       plan?: SyncPlan | null;
+      approvePlan?: (
+        targetId: string,
+        planId: string,
+        digest: string,
+      ) => Promise<{ plan: SyncPlan }>;
       status?: SyncStatus;
       drafts?: SettingsDraftRegistry;
       fileName?: string;
@@ -127,6 +132,7 @@ describe('SyncView [Component]', () => {
 
     const page = render(SyncViewHarness, {
       targetId: 'target-1',
+      actorId: 'viewer-1',
       section,
       fileName: state.fileName,
       readOnly: false,
@@ -143,7 +149,7 @@ describe('SyncView [Component]', () => {
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
-      approvePlan: () => Promise.reject(new Error('not in this test')),
+      approvePlan: state.approvePlan ?? (() => Promise.reject(new Error('not in this test'))),
       discardPlan: () => Promise.reject(new Error('not in this test')),
       fetchStatus: () =>
         Promise.resolve(
@@ -528,6 +534,51 @@ describe('SyncView [Component]', () => {
     expect(
       screen.getByText(/Repositories appear after Smyklot refreshes this workspace/u),
     ).toBeTruthy();
+  });
+
+  it('keeps a refused plan approval out of the labels form', async () => {
+    const now = Date.UTC(2026, 10, 12);
+    const plan: SyncPlan = {
+      id: 'plan-1',
+      trigger: 'reconcile',
+      state: 'computed',
+      execution_stage: 'Waiting for approval',
+      digest: 'digest',
+      counts: { create: 1, update: 0, delete: 0 },
+      actions: [
+        {
+          repository: 'smyklot',
+          kind: 'labels',
+          operation: 'create',
+          subject: 'bug',
+          state: 'pending',
+        },
+      ],
+      computed_at: new Date(now).toISOString(),
+      expires_at: new Date(now + 60_000).toISOString(),
+    };
+    const refusal = 'This plan no longer describes the configuration';
+    const approvePlan = vi.fn().mockRejectedValue(new Error(refusal));
+    const { page } = mount(
+      config('labels'),
+      config('settings'),
+      config('rulesets'),
+      config('files'),
+      'plan',
+      { plan, approvePlan, clock: () => now },
+    );
+
+    await fireEvent.click(await screen.findByRole('button', { name: /Apply to 1/u }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Resume sync' }));
+    const message = await screen.findByText(refusal);
+    expect(message.closest('[role="dialog"]')?.id).toBe('sync-details');
+    expect(approvePlan).toHaveBeenCalledWith('target-1', plan.id, plan.digest);
+
+    await act(() => page.component.openSection('labels'));
+    await screen.findByRole('heading', { name: 'Labels' });
+    expect(screen.queryByText(refusal)).toBeNull();
+    await act(() => page.component.openSection('plan'));
+    expect((await screen.findByText(refusal)).closest('[role="dialog"]')?.id).toBe('sync-details');
   });
 
   it('renders relative plan times against an injected catalogue clock', async () => {

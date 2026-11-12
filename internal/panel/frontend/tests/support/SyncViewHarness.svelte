@@ -16,6 +16,14 @@
   }: ComponentProps<typeof SyncView> & { drafts: SettingsDraftRegistry } = $props();
 
   setSettingsDraftRegistry(untrack(() => drafts));
+
+  let selectedSection = $state<ComponentProps<typeof SyncView>['section'] | null>(null);
+
+  export function openSection(section: ComponentProps<typeof SyncView>['section']): void {
+    selectedSection = section;
+  }
 </script>
 
-<QueryClientProvider {client}><SyncView {...viewProps} /></QueryClientProvider>
+<QueryClientProvider {client}
+  ><SyncView {...viewProps} section={selectedSection ?? viewProps.section} /></QueryClientProvider
+>

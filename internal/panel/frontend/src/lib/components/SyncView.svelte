@@ -341,7 +341,8 @@
   );
   let focusConfirmedRequest = false;
   let viewError = $state<string | null>(null);
-  const error = $derived(requests.error ?? viewError);
+  let planError = $state<string | null>(null);
+  const error = $derived(requests.error ?? planError ?? viewError);
   function readRequestStorage(): void {
     requests.readRequestStorage();
   }
@@ -350,7 +351,7 @@
   }
   onMount(readRequestStorage);
 
-  const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
+  const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? viewError);
   const documentError = $derived<Record<DocumentKind, string | null>>({
     settings: stageProblems.settings ?? editorStates.settings?.problem ?? null,
     rulesets: stageProblems.rulesets ?? editorStates.rulesets?.problem ?? null,
@@ -384,6 +385,7 @@
 
   async function load(id: string): Promise<void> {
     viewError = null;
+    planError = null;
     try {
       const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedContext] =
         await Promise.all([
@@ -552,12 +554,12 @@
   async function onApprove(planId: string, digest: string): Promise<void> {
     const requestTargetId = targetId;
     approving = true;
-    viewError = null;
+    planError = null;
     try {
       await approvePlan(requestTargetId, planId, digest);
       await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      viewError = messageOf(cause);
+      planError = messageOf(cause);
     } finally {
       approving = false;
     }
@@ -567,12 +569,12 @@
   async function onDiscard(planId: string): Promise<void> {
     const requestTargetId = targetId;
     discarding = true;
-    viewError = null;
+    planError = null;
     try {
       await discardPlan(requestTargetId, planId);
       await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      viewError = messageOf(cause);
+      planError = messageOf(cause);
     } finally {
       discarding = false;
     }
@@ -640,9 +642,11 @@ Live plan and status queries share the shell's event invalidation and polling fa
                 >Finish recovery</Button
               >
             {:else if fetchOperation}<Button
+                busy={runningNow}
+                busyLabel="Confirming…"
                 aria-disabled={runningNow}
                 onclick={(event) => void confirmRequest(event.currentTarget)}
-                >{runningNow ? 'Confirming…' : 'Confirm request'}</Button
+                >Confirm request</Button
               >
               {#if requestNotRecorded && canControl}<Button
                   disabled={runningNow}
@@ -650,13 +654,13 @@ Live plan and status queries share the shell's event invalidation and polling fa
                   >Retry original request</Button
                 >{/if}
             {:else if canControl}<Button
+                busy={runningNow}
+                busyLabel="Recovering…"
                 disabled={runningNow}
                 onclick={() => pendingRequest && void onRunNow(pendingRequest)}
-                >{runningNow
-                  ? 'Recovering…'
-                  : pendingRequest?.action === 'check'
-                    ? 'Recover check'
-                    : 'Recover run request'}</Button
+                >{pendingRequest?.action === 'check'
+                  ? 'Recover check'
+                  : 'Recover run request'}</Button
               >
             {:else}<span>You need Admin or Owner access to recover this request.</span>{/if}
           {/snippet}

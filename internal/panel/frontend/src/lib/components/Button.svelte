@@ -17,6 +17,7 @@
 <script lang="ts" generics="Href extends string | undefined = undefined">
   import type { Snippet } from 'svelte';
   import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
+  import Icon from './Icon.svelte';
 
   type NativeElement = Href extends string ? HTMLAnchorElement : HTMLButtonElement;
   type NativeAttributes = HTMLAttributes<NativeElement> &
@@ -30,6 +31,8 @@
     href,
     icon,
     trailing,
+    busy = false,
+    busyLabel,
     element = $bindable(null),
     class: extra = '',
     children,
@@ -44,6 +47,9 @@
     icon?: Snippet;
     /** Drawn after the label - a chevron, or a count. */
     trailing?: Snippet;
+    busy?: boolean;
+    /** Accessible progress text. A spinner occupies the resting label's space. */
+    busyLabel?: string;
     /** For a caller that has to focus this button again after a dialog closes. */
     element?: HTMLButtonElement | null;
     /** The one-off class a call site adds for its own layout, never for the button's own paint. */
@@ -74,6 +80,9 @@ value. It is not a submit, navigation or primary creation action.
 
 Disabled is a state rather than a tone. It arrives through `rest`, and any tone can wear it.
 
+`busyLabel` names the progress spinner for assistive technology. The resting label alone sets the width.
+The caller controls whether a busy button is disabled.
+
 `href` draws an anchor instead of a button, which is what sign-in and the invitation's
 accept and decline are. Both wear `.btn`, which is why the tones live in `app.css` and
 this component has no `<style>` block.
@@ -91,7 +100,19 @@ this component has no `<style>` block.
   {#if icon !== undefined}
     {@render icon()}
   {/if}
-  <span class="button-label">{@render children()}</span>
+  {#if busyLabel !== undefined}
+    <span class="button-label button-label-states">
+      <span class={{ 'button-label-hidden': busy }} aria-hidden={busy || undefined}
+        >{@render children()}</span
+      >
+      <span class={['button-label-progress', { 'button-label-hidden': !busy }]} aria-hidden="true"
+        ><Icon name="refresh" size="xs" strokeWidth={2} /></span
+      >
+      <span class="visually-hidden" aria-hidden={!busy || undefined}>{busyLabel}</span>
+    </span>
+  {:else}
+    <span class="button-label">{@render children()}</span>
+  {/if}
   {#if trailing !== undefined}
     {@render trailing()}
   {/if}
@@ -117,9 +138,15 @@ this component has no `<style>` block.
   native attribute type; a button handler need not also accept an anchor event.
 -->
 {#if href !== undefined}
-  <a {href} {...rest as HTMLAnchorAttributes} class={classes}>{@render body()}</a>
+  <a {href} aria-busy={busy || undefined} {...rest as HTMLAnchorAttributes} class={classes}
+    >{@render body()}</a
+  >
 {:else}
-  <button bind:this={element} type="button" {...rest as HTMLButtonAttributes} class={classes}
-    >{@render body()}</button
+  <button
+    bind:this={element}
+    type="button"
+    aria-busy={busy || undefined}
+    {...rest as HTMLButtonAttributes}
+    class={classes}>{@render body()}</button
   >
 {/if}

@@ -154,8 +154,11 @@ beside the affected repository. Change details open over this view, preserving c
   >
     {#snippet actions()}
       <Button tone="quiet" onclick={() => onOpenSection('history')}>Sync history</Button>
-      {#if canControl && !ongoing && !checkPending}<Button disabled={busy} onclick={onCheck}
-          >{busy ? 'Checking…' : 'Check now'}</Button
+      {#if canControl && !ongoing && !checkPending}<Button
+          {busy}
+          busyLabel="Checking…"
+          disabled={busy}
+          onclick={onCheck}>Check now</Button
         >{/if}
     {/snippet}
   </PageHeader>

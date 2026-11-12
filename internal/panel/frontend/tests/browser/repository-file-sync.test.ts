@@ -5,6 +5,7 @@ import type { Page } from 'playwright-core';
 
 import { startPanel, visit, type Panel } from './harness';
 import { captureVisualAudit } from './visual-audit';
+import { restingButtonWidth } from './button-geometry';
 
 /**
  * The File sync card of a repository's own page, read for real.
@@ -180,6 +181,36 @@ describe('the repository file sync card in the development panel', () => {
       }
     },
   );
+
+  it('validates content adjustments before the editor loses focus', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      const repository = await repositoryPage(page, 'api-gateway');
+      const card = repository.getByRole('region', { name: 'File sync', exact: true });
+      const editor = card.locator('.cm-content');
+      const save = page.getByRole('button', { name: 'Save', exact: true });
+      const focused = () =>
+        editor.evaluate(
+          (node) => (node.getRootNode() as Document | ShadowRoot).activeElement === node,
+        );
+
+      await editor.fill('{');
+      await card.getByRole('alert').filter({ hasText: 'Enter a valid JSON object' }).waitFor();
+      expect(await focused()).toBe(true);
+      expect(await save.isDisabled()).toBe(true);
+      expect((await save.boundingBox())!.width).toBeCloseTo(
+        await restingButtonWidth(save, 'Save'),
+        1,
+      );
+
+      await editor.fill('{"packageRules":[{"groupName":"local"}]}');
+      await expect.poll(() => save.isEnabled()).toBe(true);
+      expect(await focused()).toBe(true);
+      expect(await card.getByRole('alert').count()).toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
 
   it('keeps code Undo and incomplete list rules when the inspector closes', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1440, height: 1000 } });

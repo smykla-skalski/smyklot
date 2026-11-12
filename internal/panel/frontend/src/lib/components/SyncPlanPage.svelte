@@ -394,8 +394,12 @@ the button.
         >
       {/if}
       {#if onRefresh}
-        <Button row disabled={refreshing} onclick={refreshStatus}
-          >{refreshing ? 'Refreshing…' : 'Refresh status'}</Button
+        <Button
+          row
+          busy={refreshing}
+          busyLabel="Refreshing…"
+          disabled={refreshing}
+          onclick={refreshStatus}>Refresh status</Button
         >
       {/if}
     </div>
@@ -460,7 +464,9 @@ the button.
                 tone="signal"
                 disabled={runNowBusy || runNowBlocked || dispatchIntent === null}
                 aria-describedby={dispatchGuidance ? 'dispatch-guidance' : undefined}
-                onclick={openRunConfirmation}>{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
+                busy={runNowBusy}
+                busyLabel="Dispatching…"
+                onclick={openRunConfirmation}>Run now</Button
               >
             {/if}
           </div>
@@ -724,8 +730,14 @@ the button.
           >This earlier sync still needs a decision · files open pull requests and other changes
           apply directly</span
         >
-        <Button tone="quiet" disabled={discarding || approving} onclick={() => onDiscard(plan.id)}>
-          {discarding ? 'Discarding' : 'Discard'}
+        <Button
+          tone="quiet"
+          busy={discarding}
+          busyLabel="Discarding"
+          disabled={discarding || approving}
+          onclick={() => onDiscard(plan.id)}
+        >
+          Discard
         </Button>
         <Button
           tone="signal"
