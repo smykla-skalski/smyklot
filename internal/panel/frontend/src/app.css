@@ -1630,6 +1630,20 @@ code {
   text-box: trim-both cap alphabetic;
 }
 
+.button-label-states {
+  display: inline-grid;
+}
+
+.button-label-states > span {
+  grid-area: 1 / 1;
+  text-align: center;
+  text-box: trim-both cap alphabetic;
+}
+
+.button-label-hidden {
+  visibility: hidden;
+}
+
 /* Non-interactive status: short, round, borderless — never the bordered-control
    silhouette, so nothing next to a button reads as pressable. */
 /* As wide as what it says - see the note above `.chip`. */

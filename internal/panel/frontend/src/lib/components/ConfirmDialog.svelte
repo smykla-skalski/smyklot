@@ -69,8 +69,14 @@ removed from all nine places that wrote it.
 
   {#snippet footer()}
     <Button onclick={cancel}>{cancelLabel}</Button>
-    <Button tone={confirmTone} disabled={busy || confirmDisabled} onclick={onConfirm}>
-      {busy ? busyLabel : confirmLabel}
+    <Button
+      tone={confirmTone}
+      {busy}
+      {busyLabel}
+      disabled={busy || confirmDisabled}
+      onclick={onConfirm}
+    >
+      {confirmLabel}
     </Button>
   {/snippet}
 </Modal>

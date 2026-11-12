@@ -640,9 +640,11 @@ Live plan and status queries share the shell's event invalidation and polling fa
                 >Finish recovery</Button
               >
             {:else if fetchOperation}<Button
+                busy={runningNow}
+                busyLabel="Confirming…"
                 aria-disabled={runningNow}
                 onclick={(event) => void confirmRequest(event.currentTarget)}
-                >{runningNow ? 'Confirming…' : 'Confirm request'}</Button
+                >Confirm request</Button
               >
               {#if requestNotRecorded && canControl}<Button
                   disabled={runningNow}
@@ -650,13 +652,13 @@ Live plan and status queries share the shell's event invalidation and polling fa
                   >Retry original request</Button
                 >{/if}
             {:else if canControl}<Button
+                busy={runningNow}
+                busyLabel="Recovering…"
                 disabled={runningNow}
                 onclick={() => pendingRequest && void onRunNow(pendingRequest)}
-                >{runningNow
-                  ? 'Recovering…'
-                  : pendingRequest?.action === 'check'
-                    ? 'Recover check'
-                    : 'Recover run request'}</Button
+                >{pendingRequest?.action === 'check'
+                  ? 'Recover check'
+                  : 'Recover run request'}</Button
               >
             {:else}<span>You need Admin or Owner access to recover this request.</span>{/if}
           {/snippet}

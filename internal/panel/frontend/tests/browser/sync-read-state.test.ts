@@ -80,7 +80,19 @@ describe('desktop live sync read states', () => {
         expect(page.url()).toBe(url);
         await capture('recovered-empty');
         fail = true;
-        await inspector.getByRole('button', { name: 'Refresh status', exact: true }).click();
+        retryGate.wait = new Promise<void>((resolve) => {
+          releaseRetry = resolve;
+        });
+        const refresh = inspector.getByRole('button', { name: 'Refresh status', exact: true });
+        const idleBounds = await refresh.boundingBox();
+        await refresh.click();
+        const busyRefresh = inspector.getByRole('button', { name: 'Refreshing…', exact: true });
+        await busyRefresh.waitFor();
+        const busyBounds = await busyRefresh.boundingBox();
+        expect(busyBounds!.width).toBeCloseTo(idleBounds!.width, 1);
+        expect(busyBounds!.x).toBeCloseTo(idleBounds!.x, 1);
+        releaseRetry();
+        retryGate.wait = undefined;
         await inspector.getByText('Changes could not be loaded', { exact: true }).waitFor();
         expect(await empty.count()).toBe(0);
         expect(

@@ -30,6 +30,8 @@
     href,
     icon,
     trailing,
+    busy = false,
+    busyLabel,
     element = $bindable(null),
     class: extra = '',
     children,
@@ -44,6 +46,9 @@
     icon?: Snippet;
     /** Drawn after the label - a chevron, or a count. */
     trailing?: Snippet;
+    busy?: boolean;
+    /** Both labels reserve space so a request cannot move adjacent controls. */
+    busyLabel?: string;
     /** For a caller that has to focus this button again after a dialog closes. */
     element?: HTMLButtonElement | null;
     /** The one-off class a call site adds for its own layout, never for the button's own paint. */
@@ -74,6 +79,9 @@ value. It is not a submit, navigation or primary creation action.
 
 Disabled is a state rather than a tone. It arrives through `rest`, and any tone can wear it.
 
+`busyLabel` reserves space for both labels. Only the active label is visible and accessible.
+The caller controls whether a busy button is disabled.
+
 `href` draws an anchor instead of a button, which is what sign-in and the invitation's
 accept and decline are. Both wear `.btn`, which is why the tones live in `app.css` and
 this component has no `<style>` block.
@@ -91,7 +99,18 @@ this component has no `<style>` block.
   {#if icon !== undefined}
     {@render icon()}
   {/if}
-  <span class="button-label">{@render children()}</span>
+  {#if busyLabel !== undefined}
+    <span class="button-label button-label-states">
+      <span class={{ 'button-label-hidden': busy }} aria-hidden={busy || undefined}
+        >{@render children()}</span
+      >
+      <span class={{ 'button-label-hidden': !busy }} aria-hidden={!busy || undefined}
+        >{busyLabel}</span
+      >
+    </span>
+  {:else}
+    <span class="button-label">{@render children()}</span>
+  {/if}
   {#if trailing !== undefined}
     {@render trailing()}
   {/if}

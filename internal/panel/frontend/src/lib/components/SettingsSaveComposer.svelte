@@ -141,16 +141,24 @@ changed something.
         {#if count > 0}
           <Button disabled={saving || resolving} onclick={onDiscard}>Discard</Button>
           {#if conflict}
-            <Button tone="signal" disabled={resolving} onclick={onResolveConflict}>
-              {resolving ? 'Updating…' : 'Update draft'}
+            <Button
+              tone="signal"
+              busy={resolving}
+              busyLabel="Updating…"
+              disabled={resolving}
+              onclick={onResolveConflict}
+            >
+              Update draft
             </Button>
           {:else}
             <Button
               tone="signal"
+              busy={saving}
+              busyLabel="Saving…"
               disabled={saving || resolving || readOnly || invalidProblem !== null}
               onclick={onSave}
             >
-              {saving ? 'Saving…' : 'Save'}
+              Save
             </Button>
           {/if}
         {:else}
