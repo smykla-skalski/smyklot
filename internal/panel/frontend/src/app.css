@@ -1632,12 +1632,28 @@ code {
 
 .button-label-states {
   display: inline-grid;
+  position: relative;
 }
 
 .button-label-states > span {
-  grid-area: 1 / 1;
-  text-align: center;
   text-box: trim-both cap alphabetic;
+}
+
+.button-label-progress {
+  display: grid;
+  inset: 0;
+  place-items: center;
+  position: absolute;
+}
+
+.button-label-progress:not(.button-label-hidden) svg {
+  animation: button-progress-spin var(--rhythm-spinner) var(--ease-linear) infinite;
+}
+
+@keyframes button-progress-spin {
+  to {
+    rotate: 360deg;
+  }
 }
 
 .button-label-hidden {

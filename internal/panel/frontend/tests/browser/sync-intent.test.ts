@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addressOf, startPanel, visit, type Panel } from './harness';
+import { restingButtonWidth } from './button-geometry';
 
 let panel: Panel;
 beforeAll(async () => {
@@ -71,7 +72,12 @@ describe('desktop sync request intent', () => {
           await page.screenshot({
             path: join(relatedDirectory, `F33-related-plan-check-inspector-${colorScheme}.png`),
           });
-        await inspector.getByRole('button', { name: 'Run now', exact: true }).click();
+        const run = inspector.getByRole('button', { name: 'Run now', exact: true });
+        expect((await run.boundingBox())!.width).toBeCloseTo(
+          await restingButtonWidth(run, 'Run now'),
+          1,
+        );
+        await run.click();
         const confirmation = page.getByRole('dialog', { name: 'Sync now?', exact: true });
         await confirmation.getByLabel('Reason', { exact: true }).fill('Run these reviewed changes');
         await capture('dispatch-confirmation');

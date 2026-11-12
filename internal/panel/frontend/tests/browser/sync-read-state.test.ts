@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addressOf, startPanel, type Panel } from './harness';
+import { restingButtonWidth } from './button-geometry';
 let panel: Panel;
 beforeAll(async () => {
   panel = await startPanel();
@@ -85,6 +86,10 @@ describe('desktop live sync read states', () => {
         });
         const refresh = inspector.getByRole('button', { name: 'Refresh status', exact: true });
         const idleBounds = await refresh.boundingBox();
+        expect(idleBounds!.width).toBeCloseTo(
+          await restingButtonWidth(refresh, 'Refresh status'),
+          1,
+        );
         await refresh.click();
         const busyRefresh = inspector.getByRole('button', { name: 'Refreshing…', exact: true });
         await busyRefresh.waitFor();

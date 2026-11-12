@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
@@ -574,9 +574,11 @@ describe('SyncView [Component]', () => {
     expect(message.closest('[role="dialog"]')?.id).toBe('sync-details');
     expect(approvePlan).toHaveBeenCalledWith('target-1', plan.id, plan.digest);
 
-    await page.rerender({ section: 'labels' });
+    await act(() => page.component.openSection('labels'));
     await screen.findByRole('heading', { name: 'Labels' });
     expect(screen.queryByText(refusal)).toBeNull();
+    await act(() => page.component.openSection('plan'));
+    expect((await screen.findByText(refusal)).closest('[role="dialog"]')?.id).toBe('sync-details');
   });
 
   it('renders relative plan times against an injected catalogue clock', async () => {
