@@ -3,7 +3,7 @@ package filemerge
 import (
 	"fmt"
 
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // mergeKey is how YAML spells one mapping taking another's keys as its own.

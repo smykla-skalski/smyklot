@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // The tags a node built here carries. Written rather than left to the encoder,

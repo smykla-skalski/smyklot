@@ -3,7 +3,7 @@ package filemerge
 import (
 	"fmt"
 
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // applyArrayRules re-merges the lists a spec names, which the merge patch would

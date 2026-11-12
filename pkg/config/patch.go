@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // RepoConfigPaths are the places a repository's own configuration may live, in

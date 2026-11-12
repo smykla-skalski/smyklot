@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
 	"github.com/smykla-skalski/smyklot/pkg/config"
