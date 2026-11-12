@@ -68,6 +68,12 @@
       "matchPackageNames": ["bits-ui"]
     },
     {
+      "description": "Hold go.yaml.in/yaml on v3: v4 leaves Node.Tag empty on implicitly typed scalars, and the filemerge engine compares resolved tags, so the move needs its own migration",
+      "enabled": false,
+      "matchPackageNames": ["go.yaml.in/yaml/v3"],
+      "matchUpdateTypes": ["major"]
+    },
+    {
       "description": "Keep Storybook packages and their addon peer dependencies compatible",
       "groupName": "Storybook",
       "matchPackageNames": ["storybook", "@storybook/*"]
