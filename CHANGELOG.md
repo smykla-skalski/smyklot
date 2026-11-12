@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.59.3](https://github.com/smykla-skalski/smyklot/compare/v1.59.2...v1.59.3) (2026-11-12)
+
+### Bug Fixes
+
+* **deps:** update dependency bits-ui to v2.20.4 ([#544](https://github.com/smykla-skalski/smyklot/issues/544)) ([72291c5](https://github.com/smykla-skalski/smyklot/commit/72291c55f67ee3be60678fb718c0f9864bdc3474))
+* **deps:** update dependency bits-ui to v2.20.6 ([#550](https://github.com/smykla-skalski/smyklot/issues/550)) ([b3ae80f](https://github.com/smykla-skalski/smyklot/commit/b3ae80f3ad68e12c58213839782a7a6639080203))
+* **fly:** restart the machine after a Fly stop ([#546](https://github.com/smykla-skalski/smyklot/issues/546)) ([274779b](https://github.com/smykla-skalski/smyklot/commit/274779b479b82a1d0ee8c510f99e2e233f5f1f0c))
+* **panel:** stabilize sync controls and error feedback ([#554](https://github.com/smykla-skalski/smyklot/issues/554)) ([2c205e9](https://github.com/smykla-skalski/smyklot/commit/2c205e92c16b3996bd167efb04244d277074d4ec))
+
 ## [1.59.2](https://github.com/smykla-skalski/smyklot/compare/v1.59.1...v1.59.2) (2026-11-10)
 
 ### Bug Fixes
