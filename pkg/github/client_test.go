@@ -417,22 +417,62 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 
-			It("should not replay an exact-head merge after a server error", func() {
-				attempts := 0
-				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					attempts++
-					w.WriteHeader(http.StatusInternalServerError)
-					_, _ = w.Write([]byte(`{"message":"server error"}`))
-				}))
+			DescribeTable("should not replay a merge after a server error",
+				func(merge func(*github.Client) error) {
+					attempts := 0
+					server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						if r.Method == http.MethodPut {
+							attempts++
+						}
+						w.WriteHeader(http.StatusInternalServerError)
+						_, _ = w.Write([]byte(`{"message":"server error"}`))
+					}))
 
-				client, err := github.NewClient("test-token", server.URL)
-				Expect(err).NotTo(HaveOccurred())
-				err = client.MergePRAtHead(
-					context.Background(), "owner", "repo", 1, github.MergeMethodSquash, "abc123",
-				)
-				Expect(err).To(HaveOccurred())
-				Expect(attempts).To(Equal(1))
-			})
+					client, err := github.NewClient("test-token", server.URL)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(merge(client)).To(MatchError(ContainSubstring("500")))
+					Expect(attempts).To(Equal(1))
+				},
+				Entry("plain merge", func(client *github.Client) error {
+					return client.MergePR(context.Background(), "owner", "repo", 1, github.MergeMethodSquash)
+				}),
+				Entry("exact-head merge", func(client *github.Client) error {
+					return client.MergePRAtHead(
+						context.Background(), "owner", "repo", 1, github.MergeMethodSquash, "abc123",
+					)
+				}),
+			)
+
+			DescribeTable("should check live state after a failed merge",
+				func(stateHead string, expectSuccess bool) {
+					server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						if r.Method == http.MethodPut {
+							w.WriteHeader(http.StatusBadGateway)
+							_, _ = w.Write([]byte(`{"message":"server error"}`))
+
+							return
+						}
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"state":  "closed",
+							"merged": true,
+							"head":   map[string]string{"sha": stateHead},
+						})
+					}))
+
+					client, err := github.NewClient("test-token", server.URL)
+					Expect(err).NotTo(HaveOccurred())
+					err = client.MergePRAtHead(
+						context.Background(), "owner", "repo", 1, github.MergeMethodSquash, "abc123",
+					)
+					if expectSuccess {
+						Expect(err).NotTo(HaveOccurred())
+					} else {
+						Expect(err).To(MatchError(ContainSubstring("502")))
+					}
+				},
+				Entry("merged at the expected head", "abc123", true),
+				Entry("merged at another head", "def456", false),
+			)
 		})
 	})
 
