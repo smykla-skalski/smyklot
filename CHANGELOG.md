@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.59.4](https://github.com/smykla-skalski/smyklot/compare/v1.59.3...v1.59.4) (2026-11-15)
+
+### Bug Fixes
+
+* **deps:** update module github.com/spf13/pflag to v1.1.0 ([#561](https://github.com/smykla-skalski/smyklot/issues/561)) ([11a7da7](https://github.com/smykla-skalski/smyklot/commit/11a7da792ac340957428968a8659089722214b8c))
+* **deps:** update module golang.org/x/oauth2 to v0.38.0 ([#563](https://github.com/smykla-skalski/smyklot/issues/563)) ([5c4e269](https://github.com/smykla-skalski/smyklot/commit/5c4e269c29d24d341b587c4191edc3331f27e02b))
+* **deps:** update module modernc.org/sqlite to v1.62.0 ([#565](https://github.com/smykla-skalski/smyklot/issues/565)) ([96640cd](https://github.com/smykla-skalski/smyklot/commit/96640cd35f13187aa255220644a3e6b17b32def0))
+* **github:** send a merge once and check it ([#566](https://github.com/smykla-skalski/smyklot/issues/566)) ([862fdc9](https://github.com/smykla-skalski/smyklot/commit/862fdc9ca8aaae603af420e33c04f65db083a949))
+
 ## [1.59.3](https://github.com/smykla-skalski/smyklot/compare/v1.59.2...v1.59.3) (2026-11-12)
 
 ### Bug Fixes
