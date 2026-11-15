@@ -13,10 +13,6 @@ func (c *Client) MergePR(ctx context.Context, owner, repo string, prNumber int, 
 }
 
 // MergePRAtHead merges only if headSHA is still the pull request head.
-//
-// GitHub may have accepted a merge even when its response is lost or is a
-// server error. Sending the irreversible request again would cross any policy
-// change made between attempts, so exact-head merges are always attempted once.
 func (c *Client) MergePRAtHead(
 	ctx context.Context,
 	owner, repo string,
@@ -28,10 +24,33 @@ func (c *Client) MergePRAtHead(
 		return errors.New("expected pull request head SHA must not be empty")
 	}
 
-	return c.mergePR(withoutRetry(ctx), owner, repo, prNumber, method, headSHA)
+	return c.mergePR(ctx, owner, repo, prNumber, method, headSHA)
 }
 
 func (c *Client) mergePR(
+	ctx context.Context,
+	owner, repo string,
+	prNumber int,
+	method MergeMethod,
+	headSHA string,
+) error {
+	err := c.sendMerge(withoutRetry(ctx), owner, repo, prNumber, method, headSHA)
+	if err == nil {
+		return nil
+	}
+
+	state, verificationErr := c.GetPullRequestState(withoutRetry(ctx), owner, repo, prNumber)
+	if verificationErr != nil {
+		return errors.Join(err, fmt.Errorf("verify merge: %w", verificationErr))
+	}
+	if state.Merged && (headSHA == "" || state.HeadSHA == headSHA) {
+		return nil
+	}
+
+	return err
+}
+
+func (c *Client) sendMerge(
 	ctx context.Context,
 	owner, repo string,
 	prNumber int,
