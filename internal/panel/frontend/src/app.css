@@ -468,9 +468,9 @@ a[href]:active {
    family in the app that answered a press with a flat repaint.
 
    The two reasons this family used to be exempt do not survive being checked. A 1px
-   move was said to take the control's edge out from under the cursor and lose the
-   click: every other pressable surface in the app moves exactly that far and none of
-   them do. And the thumb under the tree was said to stay put while its row sank: it
+   move does take the control's top edge out from under the cursor, on every pressable
+   surface in the app, and `keepPressesOnControls` holds the press on the control so
+   the click is not lost. And the thumb under the tree was said to stay put while its row sank: it
    does not have to - it is the surface actually selected, so it takes the same sink,
    and the pair moves as one object.
 
