@@ -30,6 +30,7 @@
     saveRootSettingsDraft,
   } from '#lib/root-settings-save.js';
   import { revealControl } from '#lib/reveal-control.js';
+  import { keepPressesOnControls } from '#lib/press-capture.js';
   import {
     runtimeFieldConflicts,
     runtimeConflictValue,
@@ -340,6 +341,8 @@
   $effect(() => {
     void panelHasSettled(document);
   });
+
+  $effect(() => keepPressesOnControls(document));
 
   $effect(() => {
     // `syncRouteContext` reads the route and its parameters, so tracking them is what
