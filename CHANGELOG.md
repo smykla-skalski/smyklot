@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.59.5](https://github.com/smykla-skalski/smyklot/compare/v1.59.4...v1.59.5) (2026-11-16)
+
+### Bug Fixes
+
+* **panel:** keep top-edge presses on the control ([#568](https://github.com/smykla-skalski/smyklot/issues/568)) ([b5b7fd2](https://github.com/smykla-skalski/smyklot/commit/b5b7fd22bdb3ee1fcd64d819b0eb73cd45b3a2d6))
+
 ## [1.59.4](https://github.com/smykla-skalski/smyklot/compare/v1.59.3...v1.59.4) (2026-11-15)
 
 ### Bug Fixes
