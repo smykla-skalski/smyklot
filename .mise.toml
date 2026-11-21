@@ -6,7 +6,7 @@ node = "26.13.0"
 "npm:markdownlint-cli2" = { version = "0.24.0", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.34.0"
 "github:sourcegraph/scip-go" = "0.2.9"
-"npm:@sourcegraph/scip-typescript" = "0.6.1"
+"npm:@sourcegraph/scip-typescript" = "0.6.2"
 actionlint = "1.7.12"
 golangci-lint = "2.15.0"
 helm = "4.3.2"
