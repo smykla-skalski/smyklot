@@ -34,7 +34,7 @@
     "@tsconfig/svelte": "5.0.9",
     "@types/node": "26.6.6",
     "@typescript/native": "npm:typescript@7.0.2",
-    "csstype": "3.2.3",
+    "csstype": "3.2.4",
     "eslint": "10.14.0",
     "eslint-plugin-svelte": "3.24.1",
     "globals": "17.14.0",
